@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from dispatcher import dispatch_batch
 from models import Job, OutboxEvent
 from tasks import process_job
+import dispatcher
+from sqlalchemy.exc import OperationalError
 
 
 @pytest.fixture
@@ -122,3 +124,69 @@ def test_database_failure_rolls_back_publication_marker(test_engine: Engine, pub
         assert session.get(OutboxEvent, event_id).publication_status == "pending"
     assert dispatch_batch(test_engine) == 1
     assert publisher.call_count == 2  # Publication can repeat after a DB failure.
+
+
+@pytest.mark.parametrize("claimed", [0, 2])
+def test_polling_waits_between_batches(monkeypatch: pytest.MonkeyPatch, claimed: int) -> None:
+    batch = Mock(return_value=claimed)
+    sleep = Mock(side_effect=[None, KeyboardInterrupt()])
+    monkeypatch.setattr(dispatcher, "dispatch_batch", batch)
+    monkeypatch.setattr(dispatcher.time, "sleep", sleep)
+    engine = Mock()
+    dispatcher.run_dispatcher(engine, interval=0.5, batch_size=3)
+    assert batch.call_count == sleep.call_count == 2
+    sleep.assert_called_with(0.5)
+    batch.assert_called_with(engine, batch_size=3, max_attempts=5,
+                             base_delay_seconds=5, max_delay_seconds=300)
+
+
+@pytest.mark.parametrize("error", [OperationalError(None, None, Exception()), ConnectionError(), TimeoutError()])
+def test_polling_recovers_after_temporary_failure(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
+    batch = Mock(side_effect=[error, 0])
+    sleep = Mock(side_effect=[None, KeyboardInterrupt()])
+    monkeypatch.setattr(dispatcher, "dispatch_batch", batch)
+    monkeypatch.setattr(dispatcher.time, "sleep", sleep)
+    dispatcher.run_dispatcher(Mock())
+    assert batch.call_count == sleep.call_count == 2
+    sleep.assert_called_with(1.0)
+
+
+def test_shutdown_during_batch_disposes_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = Mock()
+    monkeypatch.setattr(dispatcher, "get_engine", Mock(return_value=engine))
+    monkeypatch.setattr(dispatcher, "dispatch_batch", Mock(side_effect=KeyboardInterrupt()))
+    sleep = Mock()
+    monkeypatch.setattr(dispatcher.time, "sleep", sleep)
+    dispatcher.main([])
+    sleep.assert_not_called()
+    engine.dispose.assert_called_once()
+
+
+def test_unexpected_failure_propagates_and_disposes_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = Mock()
+    monkeypatch.setattr(dispatcher, "get_engine", Mock(return_value=engine))
+    monkeypatch.setattr(dispatcher, "dispatch_batch", Mock(side_effect=RuntimeError("Bug")))
+    with pytest.raises(RuntimeError, match="Bug"):
+        dispatcher.main([])
+    engine.dispose.assert_called_once()
+
+
+@pytest.mark.parametrize("interval", ["0", "-1", "nan", "inf"])
+def test_invalid_interval_stops_before_database_access(monkeypatch: pytest.MonkeyPatch, interval: str) -> None:
+    engine_factory = Mock()
+    monkeypatch.setattr(dispatcher, "get_engine", engine_factory)
+    with pytest.raises(SystemExit):
+        dispatcher.main(["--interval", interval])
+    engine_factory.assert_not_called()
+
+
+def test_interrupted_batch_rolls_back_and_releases_lock(test_engine: Engine, publisher: Mock) -> None:
+    event_id = seed_event(test_engine)
+    publisher.side_effect = KeyboardInterrupt()
+    dispatcher.run_dispatcher(test_engine)
+    with Session(test_engine) as session:
+        entry = session.get(OutboxEvent, event_id)
+        assert entry.publication_status == "pending"
+        assert entry.retry_count == 0
+    publisher.side_effect = None
+    assert dispatch_batch(test_engine) == 1

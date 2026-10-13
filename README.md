@@ -2,7 +2,7 @@
 
 FlowForge is a software engineering portfolio project evolving into a distributed task processing platform. Its current foundation is a FastAPI service for creating and retrieving jobs, supported by automated API tests.
 
-Jobs are persisted in PostgreSQL through SQLAlchemy, with schema migrations managed by Alembic. A transactional outbox dispatcher publishes jobs through Redis to Celery workers. Continuous dispatch, crash recovery, and a React interface are planned.
+Jobs are persisted in PostgreSQL through SQLAlchemy, with schema migrations managed by Alembic. A continuously polling transactional outbox dispatcher publishes jobs through Redis to Celery workers. Crash recovery and a React interface are planned.
 
 ## Current features
 
@@ -35,7 +35,7 @@ Jobs survive FastAPI restarts and are shared by server processes connected to th
 
 | Planned technology | Intended purpose |
 | --- | --- |
-| Continuous dispatch and recovery | Scheduled outbox polling and recovery of interrupted jobs |
+| Crash recovery | Recovery of interrupted jobs |
 | React | User interface |
 | Docker application containers | Containerized API and worker deployment |
 
@@ -215,7 +215,17 @@ Job creation stores a `process_job` outbox event in the same PostgreSQL transact
 
 `dispatcher.dispatch_batch(engine, batch_size=20, max_attempts=5, base_delay_seconds=5, max_delay_seconds=300)` runs one bounded batch. It selects due pending events in creation order using PostgreSQL `FOR UPDATE SKIP LOCKED` and holds their row locks until the batch transaction completes. Simultaneous dispatcher instances skip claimed rows.
 
-Messages contain the job UUID as a string argument to `tasks.process_job`. The event becomes `published` only after Celery publication succeeds. On failure, `retry_count` increments and `next_attempt_at` schedules a retry with exponential delay capped at `max_delay_seconds`. Events reaching `max_attempts` remain stored with publication status `failed`. Failed attempts are logged without broker exception details. Subsequent batch invocations perform retries; this module does not run a continuous loop.
+Messages contain the job UUID as a string argument to `tasks.process_job`. The event becomes `published` only after Celery publication succeeds. On failure, `retry_count` increments and `next_attempt_at` schedules a retry with exponential delay capped at `max_delay_seconds`. Events reaching `max_attempts` remain stored with publication status `failed`. Failed attempts are logged without broker exception details. Subsequent batch invocations perform retries.
+
+With PostgreSQL and Redis running and migrations applied, start continuous dispatch from the project root in PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m dispatcher --interval 1 --batch-size 20
+```
+
+The default interval is one second. Each iteration processes one bounded batch, then waits for the interval even when no events are eligible or a temporary database/connection failure occurs. Retry scheduling and row locking are unchanged. Optional flags `--max-attempts`, `--base-delay-seconds`, and `--max-delay-seconds` configure publication retries; all sizes and delays must be positive. Unexpected programming errors stop the process instead of being silently retried.
+
+Stop with Ctrl+C. An interrupted batch rolls back and closes its session, releasing row locks; the CLI disposes the engine on exit. Interrupts may be delayed while a network operation is blocked. Events already published before interruption can be delivered again after rollback. Starting the dispatcher publishes eligible older events too; start it only when existing pending jobs may safely run. No continuous process starts merely by importing the module.
 
 Publication and PostgreSQL commits are separate operations. A crash or database failure after publication may result in duplicate delivery on the next run. Future processing tasks must therefore handle duplicates safely. `published` means accepted by the publisher, not executed successfully by a worker. A failed database transaction can also roll back retry accounting. Row locks remain held during broker calls, so small batches are appropriate; the batch size does not impose a network time limit.
 
