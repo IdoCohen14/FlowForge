@@ -4,17 +4,26 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app, jobs
+from main import app
+from database import get_session, session_scope
+from sqlalchemy.engine import Engine
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
+from models import Job
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
-    jobs.clear()
+def client(test_engine: Engine) -> Iterator[TestClient]:
+    def isolated_session() -> Iterator[Session]:
+        yield from session_scope(test_engine)
+
+    app.dependency_overrides[get_session] = isolated_session
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
-        jobs.clear()
+        app.dependency_overrides.pop(get_session, None)
 
 
 def test_create_job(client: TestClient) -> None:
@@ -230,4 +239,45 @@ def test_status_update_for_missing_job(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found"}
-    assert jobs == {}
+    assert client.get("/jobs").json() == []
+
+
+def test_job_persists_across_sessions(client: TestClient, test_engine: Engine) -> None:
+    created = client.post("/jobs", json={"name": "Persistent job"})
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+    assert client.patch(f"/jobs/{job_id}/status", json={"status": "running"}).status_code == 200
+
+    with Session(test_engine) as session:
+        stored = session.get(Job, UUID(job_id))
+        assert stored is not None
+        assert stored.name == "Persistent job"
+        assert stored.status == "running"
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_database_failure_rolls_back(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    if operation == "update":
+        created = client.post("/jobs", json={"name": "Existing job"})
+        assert created.status_code == 200
+        job = created.json()
+
+    def failing_commit(session: Session) -> None:
+        session.flush()
+        session.execute(text("SELECT 1 / 0"))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Session, "commit", failing_commit)
+        with pytest.raises(DBAPIError):
+            if operation == "create":
+                client.post("/jobs", json={"name": "Uncommitted job"})
+            else:
+                client.patch(f"/jobs/{job['id']}/status", json={"status": "running"})
+
+    listed = client.get("/jobs")
+    assert listed.status_code == 200
+    assert listed.json() == ([] if operation == "create" else [job])
+    # A later write also succeeds after the failed transaction.
+    assert client.post("/jobs", json={"name": "After failure"}).status_code == 200
