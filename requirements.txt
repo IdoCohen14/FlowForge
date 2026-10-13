@@ -1,0 +1,8 @@
+# Application dependencies
+fastapi>=0.143.0,<0.144.0
+pydantic>=2.14.1,<2.15.0
+uvicorn>=0.54.0,<0.55.0
+
+# API testing dependencies
+pytest>=9.1.1,<9.2.0
+httpx>=0.28.1,<0.29.0
