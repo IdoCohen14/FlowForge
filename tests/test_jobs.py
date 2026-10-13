@@ -127,3 +127,107 @@ def test_retrieve_two_different_jobs(client: TestClient) -> None:
 
         assert response.status_code == 200
         assert response.json() == expected
+
+
+@pytest.mark.parametrize(
+    "statuses",
+    [("running",), ("running", "completed"), ("running", "failed")],
+    ids=["start", "complete", "fail"],
+)
+def test_successful_status_transitions(
+    client: TestClient, statuses: tuple[str, ...]
+) -> None:
+    created = client.post("/jobs", json={"name": "Lifecycle job"})
+    assert created.status_code == 200
+    job = created.json()
+    for status in statuses:
+        response = client.patch(f"/jobs/{job['id']}/status", json={"status": status})
+        assert response.status_code == 200
+        assert response.json() == {**job, "status": status}
+
+    retrieved = client.get(f"/jobs/{job['id']}")
+    assert retrieved.status_code == 200
+    assert retrieved.json() == {**job, "status": statuses[-1]}
+    listed = client.get("/jobs")
+    assert listed.status_code == 200
+    assert listed.json() == [retrieved.json()]
+
+
+@pytest.mark.parametrize(
+    ("current_status", "new_status"),
+    [
+        ("pending", "pending"),
+        ("pending", "completed"),
+        ("pending", "failed"),
+        ("running", "pending"),
+        ("running", "running"),
+        ("completed", "pending"),
+        ("completed", "running"),
+        ("completed", "completed"),
+        ("completed", "failed"),
+        ("failed", "pending"),
+        ("failed", "running"),
+        ("failed", "completed"),
+        ("failed", "failed"),
+    ],
+)
+def test_invalid_status_transitions(
+    client: TestClient, current_status: str, new_status: str
+) -> None:
+    created = client.post("/jobs", json={"name": "Lifecycle job"})
+    assert created.status_code == 200
+    job = created.json()
+    status_url = f"/jobs/{job['id']}/status"
+    if current_status != "pending":
+        assert client.patch(status_url, json={"status": "running"}).status_code == 200
+    if current_status in ("completed", "failed"):
+        assert client.patch(status_url, json={"status": current_status}).status_code == 200
+
+    response = client.patch(status_url, json={"status": new_status})
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Invalid status transition"}
+    retrieved = client.get(f"/jobs/{job['id']}")
+    assert retrieved.status_code == 200
+    assert retrieved.json() == {**job, "status": current_status}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"status": "unknown"}, {"status": "RUNNING"}, {"status": None}, {"status": 123}, {}],
+    ids=["unsupported", "wrong-case", "null", "integer", "missing-status"],
+)
+def test_invalid_status_request(
+    client: TestClient, payload: dict[str, object]
+) -> None:
+    created = client.post("/jobs", json={"name": "Lifecycle job"})
+    assert created.status_code == 200
+    job = created.json()
+
+    response = client.patch(f"/jobs/{job['id']}/status", json=payload)
+
+    assert response.status_code == 422
+    retrieved = client.get(f"/jobs/{job['id']}")
+    assert retrieved.status_code == 200
+    assert retrieved.json() == job
+
+
+def test_status_update_without_body(client: TestClient) -> None:
+    created = client.post("/jobs", json={"name": "Lifecycle job"})
+    assert created.status_code == 200
+    job = created.json()
+
+    response = client.patch(f"/jobs/{job['id']}/status")
+
+    assert response.status_code == 422
+    retrieved = client.get(f"/jobs/{job['id']}")
+    assert retrieved.status_code == 200
+    assert retrieved.json() == job
+
+
+def test_status_update_for_missing_job(client: TestClient) -> None:
+    response = client.patch("/jobs/missing-job/status", json={"status": "running"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Job not found"}
+    assert jobs == {}
