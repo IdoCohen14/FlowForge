@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database import get_session
-from models import Job
+from models import Job, OutboxEvent
+from job_lifecycle import ALLOWED_TRANSITIONS
 
 app = FastAPI()
 
@@ -42,6 +43,9 @@ class JobStatusUpdate(BaseModel):
 def create_job(job: JobCreate, session: Session = Depends(get_session)) -> dict[str, str]:
     stored = Job(name=job.name)
     session.add(stored)
+    # Flush obtains the UUID but does not commit the job independently.
+    session.flush()
+    session.add(OutboxEvent(job_id=stored.id))
     session.commit()
     return job_response(stored)
 
@@ -66,13 +70,7 @@ def update_job_status(
     job = session.scalar(select(Job).where(Job.id == parse_job_id(job_id)).with_for_update())
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    allowed_transitions = {
-        "pending": {"running"},
-        "running": {"completed", "failed"},
-        "completed": set(),
-        "failed": set(),
-    }
-    if update.status not in allowed_transitions[job.status]:
+    if update.status not in ALLOWED_TRANSITIONS[job.status]:
         raise HTTPException(status_code=409, detail="Invalid status transition")
 
     job.status = update.status

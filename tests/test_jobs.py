@@ -7,10 +7,10 @@ from fastapi.testclient import TestClient
 from main import app
 from database import get_session, session_scope
 from sqlalchemy.engine import Engine
-from sqlalchemy import text
+from sqlalchemy import event, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
-from models import Job
+from models import Job, OutboxEvent
 
 
 @pytest.fixture
@@ -257,7 +257,7 @@ def test_job_persists_across_sessions(client: TestClient, test_engine: Engine) -
 
 @pytest.mark.parametrize("operation", ["create", "update"])
 def test_database_failure_rolls_back(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, operation: str
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, operation: str, test_engine: Engine
 ) -> None:
     if operation == "update":
         created = client.post("/jobs", json={"name": "Existing job"})
@@ -279,5 +279,51 @@ def test_database_failure_rolls_back(
     listed = client.get("/jobs")
     assert listed.status_code == 200
     assert listed.json() == ([] if operation == "create" else [job])
+    with Session(test_engine) as session:
+        events = list(session.scalars(select(OutboxEvent)))
+        assert len(events) == (0 if operation == "create" else 1)
     # A later write also succeeds after the failed transaction.
     assert client.post("/jobs", json={"name": "After failure"}).status_code == 200
+
+
+def test_create_job_with_outbox_event(client: TestClient, test_engine: Engine) -> None:
+    first = client.post("/jobs", json={"name": "First job"})
+    second = client.post("/jobs", json={"name": "Second job"})
+    assert first.status_code == second.status_code == 200
+
+    with Session(test_engine) as session:
+        events = list(session.scalars(select(OutboxEvent)))
+        assert len(events) == 2
+        assert len({entry.id for entry in events}) == 2
+        assert {str(entry.job_id) for entry in events} == {
+            first.json()["id"], second.json()["id"]
+        }
+        for entry in events:
+            assert isinstance(entry.id, UUID)
+            assert entry.event_type == "process_job"
+            assert entry.publication_status == "pending"
+            assert entry.retry_count == 0
+            assert entry.created_at.tzinfo is not None
+            stored = session.get(Job, entry.job_id)
+            assert stored is not None
+            assert stored.status == "pending"
+
+
+def test_outbox_insert_failure_rolls_back_job(
+    client: TestClient, test_engine: Engine
+) -> None:
+    def fail_outbox_insert(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith("INSERT INTO outbox_events"):
+            connection.exec_driver_sql("SELECT 1 / 0")
+
+    event.listen(test_engine, "before_cursor_execute", fail_outbox_insert)
+    try:
+        with pytest.raises(DBAPIError):
+            client.post("/jobs", json={"name": "Rolled back job"})
+    finally:
+        event.remove(test_engine, "before_cursor_execute", fail_outbox_insert)
+
+    with Session(test_engine) as session:
+        assert list(session.scalars(select(Job))) == []
+        assert list(session.scalars(select(OutboxEvent))) == []
+    assert client.post("/jobs", json={"name": "After rollback"}).status_code == 200

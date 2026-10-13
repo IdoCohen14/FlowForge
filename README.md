@@ -2,7 +2,7 @@
 
 FlowForge is a software engineering portfolio project evolving into a distributed task processing platform. Its current foundation is a FastAPI service for creating and retrieving jobs, supported by automated API tests.
 
-Jobs are persisted in PostgreSQL through SQLAlchemy, with schema migrations managed by Alembic. Queued background processing, worker execution, and a React interface are planned.
+Jobs are persisted in PostgreSQL through SQLAlchemy, with schema migrations managed by Alembic. A transactional outbox dispatcher publishes jobs through Redis to Celery workers. Continuous dispatch, crash recovery, and a React interface are planned.
 
 ## Current features
 
@@ -14,7 +14,7 @@ Jobs are persisted in PostgreSQL through SQLAlchemy, with schema migrations mana
 - Exercise the API with isolated tests using pytest and FastAPI's TestClient.
 - Explore the API through FastAPI's generated documentation.
 
-Jobs survive FastAPI restarts and are shared by server processes connected to the same database. Each request uses a SQLAlchemy session: writes commit, failures roll back, and sessions close after use. Status updates lock the job row during transition validation. Task execution and job deletion are not implemented.
+Jobs survive FastAPI restarts and are shared by server processes connected to the same database. Each request uses a SQLAlchemy session: writes commit, failures roll back, and sessions close after use. Status updates lock the job row during transition validation. Celery workers execute a deterministic demonstration operation; job deletion is not implemented.
 
 ## Technologies
 
@@ -29,12 +29,13 @@ Jobs survive FastAPI restarts and are shared by server processes connected to th
 | PostgreSQL 17 | Persistent job storage |
 | SQLAlchemy 2.x and Psycopg 3 | ORM, sessions, and PostgreSQL driver |
 | Alembic | Database schema migrations |
-| Docker Compose | Local PostgreSQL service and persistent volume |
+| Docker Compose | Local PostgreSQL and Redis services with persistent volumes |
+| Redis 7 | Celery broker and temporary task results |
+| Celery | Background job processing and an addition demonstration task |
 
 | Planned technology | Intended purpose |
 | --- | --- |
-| Redis | Broker for queued tasks |
-| Celery | Background task processing and workers |
+| Continuous dispatch and recovery | Scheduled outbox polling and recovery of interrupted jobs |
 | React | User interface |
 | Docker application containers | Containerized API and worker deployment |
 
@@ -158,6 +159,71 @@ docker compose stop db
 ```
 
 The Compose-managed named volume `postgres_data` stores database files at `/var/lib/postgresql/data`, the data location for PostgreSQL 17. It retains data across container restarts and recreation. `docker compose down` also retains this named volume; avoid adding `--volumes` if you want to keep the data. Credentials initialize a new database only; editing `.env` does not change credentials in an already initialized volume. See the [official PostgreSQL image documentation](https://hub.docker.com/_/postgres).
+
+## Local Redis infrastructure
+
+The `redis` service uses the official `redis:7` image, pinned to major version 7. Celery uses it for job processing and the standalone addition task. Job publication is performed by the outbox dispatcher.
+
+With Docker Desktop running, validate the configuration, start only Redis, and verify readiness:
+
+```powershell
+docker compose config --quiet
+docker compose up -d --no-deps redis
+docker compose ps redis
+docker compose exec redis redis-cli ping
+```
+
+The ping command should return `PONG`. Redis is published only on `127.0.0.1:6379` for local development. The service has a `redis-cli ping` health check.
+
+`.env.example` includes `REDIS_URL=redis://127.0.0.1:6379/0` for future workers running on Windows. Add it to your existing local `.env` when needed; do not replace existing credentials. Workers running in the same Compose network will instead use `redis://redis:6379/0`, where `redis` is the service hostname. Future producers will enqueue tasks through Redis and Celery workers will consume them; PostgreSQL remains the source of persisted job records.
+
+Append-only persistence is enabled, with writes synchronized every second, and the named `redis_data` volume stores files at `/data`. This preserves broker data across container recreation for local development, though it does not guarantee task completion or prevent loss of the most recent writes after a crash. The existing PostgreSQL service and `postgres_data` volume are unchanged. See the [official Redis image documentation](https://hub.docker.com/_/redis).
+
+## Celery demonstration worker
+
+`celery_app.py` loads `REDIS_URL` from the environment or existing `.env`, defaulting to `redis://127.0.0.1:6379/0` for Windows processes. Environment variables take precedence. `tasks.py` registers an `add` task, separate from the FastAPI endpoints. Redis carries queued task messages and stores results, which expire after one hour. No tasks are automatically dispatched when jobs are created.
+
+Install the declared dependencies during initial setup with `python -m pip install -r requirements.txt` using the virtual environment, as shown above. The `celery[redis]` dependency includes the required Redis Python client.
+
+With Redis running, start a worker from the project root in a PowerShell terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m celery -A celery_app:celery_app worker --pool=solo --loglevel=info
+```
+
+The solo pool executes one task at a time. Celery does not officially support Windows; this command is intended for local development. See the [Celery platform notes](https://docs.celeryq.dev/en/stable/getting-started/introduction.html).
+
+In a second PowerShell terminal, enqueue the demonstration task and wait up to ten seconds for its result:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from tasks import add; result = add.delay(2, 3); print('Task ID:', result.id); print('Result:', result.get(timeout=10))"
+```
+
+The expected result is `5`. Stop the worker with Ctrl+C. The addition task does not access PostgreSQL; `process_job` reads and updates PostgreSQL jobs.
+
+To test the task without Redis or a worker:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_tasks.py::test_add_task -v
+```
+
+This addition test uses Celery's local `apply` method. Job-worker tests and the complete suite require PostgreSQL and use temporary test databases.
+
+## Transactional outbox dispatcher
+
+Job creation stores a `process_job` outbox event in the same PostgreSQL transaction as the job. It does not publish directly to Redis. Apply migrations with `.\.venv\Scripts\python.exe -m alembic upgrade head` before using the dispatcher.
+
+`dispatcher.dispatch_batch(engine, batch_size=20, max_attempts=5, base_delay_seconds=5, max_delay_seconds=300)` runs one bounded batch. It selects due pending events in creation order using PostgreSQL `FOR UPDATE SKIP LOCKED` and holds their row locks until the batch transaction completes. Simultaneous dispatcher instances skip claimed rows.
+
+Messages contain the job UUID as a string argument to `tasks.process_job`. The event becomes `published` only after Celery publication succeeds. On failure, `retry_count` increments and `next_attempt_at` schedules a retry with exponential delay capped at `max_delay_seconds`. Events reaching `max_attempts` remain stored with publication status `failed`. Failed attempts are logged without broker exception details. Subsequent batch invocations perform retries; this module does not run a continuous loop.
+
+Publication and PostgreSQL commits are separate operations. A crash or database failure after publication may result in duplicate delivery on the next run. Future processing tasks must therefore handle duplicates safely. `published` means accepted by the publisher, not executed successfully by a worker. A failed database transaction can also roll back retry accounting. Row locks remain held during broker calls, so small batches are appropriate; the batch size does not impose a network time limit.
+
+`process_job(job_id)` now locks the PostgreSQL row and claims only `pending` jobs by committing `running`. It computes a deterministic character checksum of the job name outside the claim transaction, then uses a fresh locked transaction to change `running` to `completed` or `failed`. The checksum is a demonstration only and is not stored or added to the API response. Processing errors are logged and re-raised so Celery also records task failure.
+
+Duplicate deliveries skip missing, running, completed, and failed jobs. Finalization preserves terminal states set by another request. The API and worker share the same transition rules. Tests execute tasks locally against temporary databases and mock dispatcher publication; they never send messages to Redis or start workers.
+
+Recovery is intentionally limited: a worker crash after claiming a job, or a database failure while recording completion, can leave it `running`. A duplicate delivery will skip it. There is no lease, stale-job recovery, or automatic retry of processing yet. A pending job manually moved to `running` is also skipped by workers. These guards prevent duplicate execution but do not provide exactly-once processing or guaranteed completion.
 
 ## Development guidelines
 
