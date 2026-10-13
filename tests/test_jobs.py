@@ -80,3 +80,50 @@ def test_retrieve_missing_job(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found"}
+
+
+def test_create_job_without_body(client: TestClient) -> None:
+    response = client.post("/jobs")
+
+    assert response.status_code == 422
+    listed = client.get("/jobs")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{}, {"name": None}, {"name": 123}],
+    ids=["missing-name", "null-name", "integer-name"],
+)
+def test_create_job_with_invalid_name(
+    client: TestClient, payload: dict[str, object]
+) -> None:
+    response = client.post("/jobs", json=payload)
+
+    assert response.status_code == 422
+    listed = client.get("/jobs")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+def test_home(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Welcome to FlowForge!"}
+
+
+def test_retrieve_two_different_jobs(client: TestClient) -> None:
+    first = client.post("/jobs", json={"name": "Process report"})
+    second = client.post("/jobs", json={"name": "Send notification"})
+    assert first.status_code == second.status_code == 200
+    first_job = first.json()
+    second_job = second.json()
+    assert first_job["id"] != second_job["id"]
+
+    for expected in (first_job, second_job):
+        response = client.get(f"/jobs/{expected['id']}")
+
+        assert response.status_code == 200
+        assert response.json() == expected
