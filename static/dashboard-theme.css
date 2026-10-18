@@ -96,3 +96,46 @@ footer a:hover { color: var(--text); }
 .placeholder-art i:nth-child(5) { background: #537966; }
 :focus-visible { outline-color: #a8c5ff; }
 ::selection { background: #664c40; color: #fff6f0; }
+
+
+/* Cool neon-blue fields against the charcoal workspace. */
+:root {
+  --input-surface: #102331;
+  --input-border: #59bfff;
+  --input-text: #d9f4ff;
+  --input-placeholder: #96bdd4;
+}
+.text-input, .search-field, .job-controls select {
+  background: var(--input-surface);
+  color: var(--input-text);
+  border-color: #4294c3;
+  box-shadow: 0 0 0 1px #59bfff0a, 0 0 12px #59bfff12;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.text-input::placeholder, .search-field input::placeholder { color: var(--input-placeholder); }
+.search-field input, .search-field > span { color: var(--input-text); }
+.text-input, .search-field input { caret-color: #8edcff; }
+.text-input:hover, .search-field:hover, .job-controls select:hover {
+  border-color: var(--input-border);
+  box-shadow: 0 0 0 1px #59bfff18, 0 0 16px #59bfff1c;
+}
+.text-input:focus, .search-field:focus-within, .job-controls select:focus {
+  background: #122c3c;
+  border-color: #8edcff;
+  outline: 2px solid #59bfff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px #59bfff14, 0 0 22px #59bfff2b;
+}
+.search-field input:focus-visible { outline: none; }
+.job-controls select option { background: var(--input-surface); color: var(--input-text); }
+.text-input:-webkit-autofill, .search-field input:-webkit-autofill {
+  -webkit-text-fill-color: var(--input-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--input-surface) inset;
+  caret-color: #8edcff;
+}
+.dropzone { background: #10202d; border-color: #4384ab; }
+.dropzone.dragging, .dropzone:focus-within {
+  background: #122c3c;
+  border-color: #8edcff;
+  box-shadow: 0 0 18px #59bfff20;
+}
