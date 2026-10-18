@@ -17,6 +17,11 @@ import dispatcher
 from sqlalchemy.exc import OperationalError
 
 
+@pytest.fixture(autouse=True)
+def isolated_recovery(monkeypatch):
+    monkeypatch.setattr(dispatcher, "recover_expired_jobs", Mock(return_value=0))
+
+
 @pytest.fixture
 def publisher(monkeypatch: pytest.MonkeyPatch) -> Mock:
     mock = Mock()

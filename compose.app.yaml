@@ -1,0 +1,54 @@
+# Opt-in app services; the existing infrastructure volumes are preserved.
+x-app: &app
+  build: .
+  environment: &environment
+    POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+    POSTGRES_HOST: db
+    POSTGRES_PORT: "5432"
+    REDIS_URL: redis://redis:6379/0
+    UPLOAD_DIR: /app/uploads
+  volumes:
+    - uploads_data:/app/uploads
+  restart: unless-stopped
+
+services:
+  migrate:
+    <<: *app
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  worker:
+    <<: *app
+    command: ["python", "-m", "celery", "-A", "celery_app:celery_app", "worker", "--pool=solo", "--loglevel=info"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  dispatcher:
+    <<: *app
+    command: ["python", "-m", "dispatcher"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  uploads_data:

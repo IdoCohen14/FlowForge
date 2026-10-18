@@ -12,6 +12,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from models import OutboxEvent
+from recovery import recover_expired_jobs
 from tasks import process_job
 from database import get_engine
 
@@ -89,6 +90,7 @@ def run_dispatcher(
     try:
         while True:
             try:
+                recover_expired_jobs(engine, batch_size=batch_size)
                 claimed = dispatch_batch(
                     engine, batch_size=batch_size, max_attempts=max_attempts,
                     base_delay_seconds=base_delay_seconds,

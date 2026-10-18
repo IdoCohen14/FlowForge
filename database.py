@@ -32,7 +32,7 @@ def get_database_url() -> URL:
 
 
 def get_engine() -> Engine:
-    return create_engine(get_database_url(), connect_args={"connect_timeout": 5})
+    return create_engine(get_database_url(), pool_pre_ping=True, connect_args={"connect_timeout": 5})
 
 
 @lru_cache(maxsize=1)

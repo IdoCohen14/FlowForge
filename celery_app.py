@@ -1,4 +1,4 @@
-"""Celery configuration for standalone demonstration tasks."""
+"""Celery delivery configuration and isolated-verification namespaces."""
 
 import os
 from pathlib import Path
@@ -15,4 +15,11 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     result_expires=3600,
+    worker_prefetch_multiplier=1,
+    task_default_queue=os.getenv("FLOWFORGE_QUEUE", "celery"),
+    result_backend_transport_options={"global_keyprefix": os.getenv("FLOWFORGE_REDIS_PREFIX", ""), "visibility_timeout": 360},
+    visibility_timeout=360,
+    broker_connection_retry_on_startup=True,
+    broker_connection_timeout=5,
+    broker_transport_options={"visibility_timeout": 360, "global_keyprefix": os.getenv("FLOWFORGE_REDIS_PREFIX", ""), "socket_timeout": 5, "socket_connect_timeout": 5},
 )

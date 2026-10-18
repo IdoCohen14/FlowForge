@@ -14,7 +14,7 @@ from database import get_database_url
 
 
 @pytest.fixture
-def test_engine() -> Iterator[Engine]:
+def test_engine(request: pytest.FixtureRequest) -> Iterator[Engine]:
     development_url = get_database_url()
     database_name = f"flowforge_test_{uuid4().hex}"
     assert database_name != development_url.database
@@ -28,7 +28,7 @@ def test_engine() -> Iterator[Engine]:
         config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
         with engine.begin() as connection:
             config.attributes["connection"] = connection
-            command.upgrade(config, "head")
+            command.upgrade(config, getattr(request, "param", "head"))
         yield engine
     finally:
         engine.dispose()

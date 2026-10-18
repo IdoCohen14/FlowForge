@@ -32,3 +32,6 @@ dist/
 *~
 .DS_Store
 Thumbs.db
+
+# Local uploaded datasets
+/uploads/
