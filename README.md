@@ -64,11 +64,14 @@ Delivery is **at least once**, and computation can overlap after lease expiry. D
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/` | Original welcome JSON |
-| GET | `/dashboard` | Workspace totals, drag-and-drop upload, sample data, job search, statistics, quality charts, and JSON export |
+| GET | `/dashboard` | Dataset-focused results, compact upload/history, validated previews, plain-language findings, timing, recovery, and JSON export |
 | GET | `/dashboard/data` | Paginated dashboard jobs; optional name search, status filter, page and page size (up to 100); global status counts |
 | GET | `/samples/sales.csv` | Download the bundled CSV example |
 | GET | `/health/ready` | Database connectivity readiness; 503 when unavailable |
 | POST | `/jobs` | JSON `{ "name": "Demo" }`; creates a demonstration job and outbox event |
+| POST | `/jobs/csv/preview` | Validate and return the first five rows, up to eight columns and 200 characters per cell; creates no job |
+| GET | `/jobs/{id}/details` | Actual attempt timestamps and duration, sanitized failure category, recovery action, and retry lineage |
+| POST | `/jobs/{id}/retry` | Republish an exhausted delivery, or create one linked retry of a failed CSV job; ineligible jobs return 409 |
 | POST | `/jobs/csv` | Multipart `file`, optional `name`; stores a validated CSV job |
 | GET | `/jobs` | Original JSON array of jobs |
 | GET | `/jobs/{id}` | Job state; 404 for absent or malformed UUID |
@@ -131,6 +134,17 @@ The pipeline verifier creates a generated database, temporary upload directory, 
 
 If old Windows temporary directories are owned by a different account, give pytest a **new** writable `--basetemp` path and optionally `-p no:cacheprovider`. Pytest may remove the contents of its selected base directory, so never point it at existing data. A Starlette TestClient HTTPX deprecation warning is currently expected.
 
+
+## Dataset details and recovery
+
+The desktop workspace prioritizes the selected dataset, with upload and searchable history in a compact sidebar. Findings are deterministic descriptions of the stored statistics, not AI interpretations. Data completeness does not establish accuracy. Numeric means are displayed as their original Decimal strings.
+
+Selecting a CSV first uploads it for server validation and a bounded preview. Preview files are removed after the response is prepared, including error paths; no job, analysis metadata, or outbox event is created. The complete CSV is validated, but only five rows and eight columns are shown, with long cell values clipped to 200 characters. Creating an analysis uploads and validates the source again. The same 10 MiB file and 11 MiB request limits apply to both endpoints. A crash can still leave an orphan preview file because storage has no retention sweep.
+
+Worker claims and finalization record `started_at` and `finished_at`; the displayed duration is the last recorded attempt's wall-clock time, excluding queue wait. Interrupted attempts have no invented duration, and pre-migration jobs show missing timing as “Not recorded.” Submission time comes from the earliest outbox event.
+
+Validation or missing-file failures require a corrected/new upload. Other failed CSV jobs can create a linked retry that references the existing stored file, preserving the original failed job and error history. Row locking and a unique `retry_of` constraint ensure repeated/concurrent retries of the same original return one child. A failed child may itself be retried explicitly. Both metadata and the new outbox event commit together; raw errors and storage paths are never returned. Files referenced by retry chains must be retained. Delivery retry keeps the original job ID and resets only its latest failed outbox event. Repeated explicit operator retries are not globally limited; add authorization, quotas and rate limits before public exposure.
+
 ## Benchmark
 
 ```powershell
@@ -143,9 +157,9 @@ Generates a deterministic three-column CSV in temporary storage, verifies its ro
 
 This is a single-host portfolio deployment. Before exposing it publicly, add authentication/authorization, TLS, rate limits and quotas, request/concurrency limits, backup/restore procedures, monitoring, and upload retention. There is no tenant isolation; clients can list all jobs. The original unpaginated job list is retained for compatibility. The dashboard uses a separate paginated endpoint, ordered by the earliest outbox event timestamp (historical jobs without events appear last). Searches are case-insensitive literal substrings of job names, combined with the selected status filter. Status totals cover the full workspace, independent of filters. Responses are bounded; aggregate counts and submission-time sorting still scan database records and will need indexing or a dedicated job timestamp at larger scale.
 
-Worker leases are fixed, without heartbeat renewal or forced cancellation. An analysis that exceeds five minutes may be recomputed and eventually fail after three attempts. Scale or renew leases before supporting longer operations. Processing validation failures are terminal, while interrupted claims retry. Permanent broker publication failures stay in the outbox for manual remediation; pending jobs are not automatically failed. Redis loss after successful publication can strand a pending job, since the outbox's published marker is not automatically reconciled. A running dispatcher is required for recovery.
+Worker leases are fixed, without heartbeat renewal or forced cancellation. An analysis that exceeds five minutes may be recomputed and eventually fail after three attempts. Scale or renew leases before supporting longer operations. Processing validation failures are terminal, while interrupted claims retry. Exhausted publication attempts stay in the outbox; the details view offers an explicit delivery retry that resets only the latest failed event. Pending jobs are not automatically failed. Redis loss after successful publication can strand a pending job, since the outbox's published marker is not automatically reconciled. A running dispatcher is required for recovery.
 
-The readiness check verifies PostgreSQL connectivity, not schema version, broker health, or worker progress. There is no distributed tracing or operator retry UI. Redis AOF uses one-second syncing and is not a zero-loss transport; back up PostgreSQL and upload storage together. No exactly-once or high-availability claim is made.
+The readiness check verifies PostgreSQL connectivity, not schema version, broker health, or worker progress. There is no distributed tracing or role-based operator access. Redis AOF uses one-second syncing and is not a zero-loss transport; back up PostgreSQL and upload storage together. No exactly-once or high-availability claim is made.
 
 ## Repository map
 

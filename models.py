@@ -24,6 +24,10 @@ class Job(Base):
     job_type: Mapped[str] = mapped_column(
         String, nullable=False, default="demo", server_default="demo"
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_code: Mapped[str | None] = mapped_column(String)
+    retry_of: Mapped[UUID | None] = mapped_column(ForeignKey("jobs.id"), unique=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     claim_token: Mapped[UUID | None] = mapped_column(Uuid)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)

@@ -1,6 +1,7 @@
 from typing import Literal
 
 from datetime import datetime, timedelta
+from itertools import islice
 from pathlib import Path
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,11 +13,12 @@ from sqlalchemy.orm import Session
 
 from database import get_session
 from models import CsvAnalysis, Job, OutboxEvent
-from csv_analysis import CsvValidationError
+from csv_analysis import CsvValidationError, iter_validated_csv
 from file_storage import FileStorageError, UnsupportedFileType, UploadTooLarge, resolve_storage_path, store_csv
 from job_lifecycle import ALLOWED_TRANSITIONS
+from job_details import describe_job
 
-app = FastAPI(title="FlowForge", version="1.1.0", description="Durable background CSV analysis with a transactional outbox and bounded worker recovery.")
+app = FastAPI(title="FlowForge", version="1.2.0", description="Durable background CSV analysis with a transactional outbox and bounded worker recovery.")
 
 
 class UploadBodyLimit:
@@ -25,7 +27,7 @@ class UploadBodyLimit:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope["path"] != "/jobs/csv" or scope["method"] != "POST":
+        if scope["type"] != "http" or scope["path"] not in ("/jobs/csv", "/jobs/csv/preview") or scope["method"] != "POST":
             return await self.app(scope, receive, send)
         limit = 11 * 1024 * 1024  # 10 MiB file plus bounded multipart overhead.
         size = 0
@@ -139,14 +141,9 @@ def create_job(job: JobCreate, session: Session = Depends(get_session)) -> dict[
     return job_response(stored)
 
 
-@app.post("/jobs/csv")
-def create_csv_job(
-    file: UploadFile = File(...),
-    name: str | None = Form(None),
-    session: Session = Depends(get_session),
-) -> dict[str, str]:
+def save_csv_upload(file: UploadFile) -> str:
     try:
-        filename = store_csv(file.file, file.filename or "")
+        return store_csv(file.file, file.filename or "")
     except UploadTooLarge as error:
         raise HTTPException(status_code=413, detail=str(error)) from None
     except UnsupportedFileType as error:
@@ -155,6 +152,16 @@ def create_csv_job(
         raise HTTPException(status_code=422, detail=str(error)) from None
     except FileStorageError:
         raise HTTPException(status_code=500, detail="Could not store CSV file") from None
+
+
+
+@app.post("/jobs/csv")
+def create_csv_job(
+    file: UploadFile = File(...),
+    name: str | None = Form(None),
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    filename = save_csv_upload(file)
 
     saved_path = resolve_storage_path(filename)
     try:
@@ -295,3 +302,87 @@ def dashboard_data(
             for job, submitted in records],
         total=total, page=page, page_size=page_size, counts=counts,
     )
+
+
+class CsvPreview(BaseModel):
+    headers: list[str]
+    rows: list[list[str]]
+    column_count: int
+    has_more_rows: bool
+    truncated_cells: bool
+
+
+@app.post("/jobs/csv/preview", response_model=CsvPreview)
+def preview_csv(file: UploadFile = File(...)) -> CsvPreview:
+    """Validate a temporary upload and return a bounded, text-only preview."""
+    filename = save_csv_upload(file)
+    path = resolve_storage_path(filename)
+    rows = iter_validated_csv(path)
+    try:
+        headers = next(rows)
+        sample = list(islice(rows, 6))
+        displayed = [headers[:8], *[row[:8] for row in sample[:5]]]
+        truncated = any(len(cell) > 200 for row in displayed for cell in row)
+        return CsvPreview(headers=[cell[:200] for cell in headers[:8]],
+            rows=[[cell[:200] for cell in row[:8]] for row in sample[:5]],
+            column_count=len(headers), has_more_rows=len(sample)>5, truncated_cells=truncated)
+    finally:
+        rows.close()
+        path.unlink(missing_ok=True)
+
+
+class JobDetails(BaseModel):
+    id: str
+    name: str
+    status: str
+    job_type: str
+    attempt_count: int
+    created_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    processing_seconds: float | None
+    failure_stage: str | None
+    message: str | None
+    recovery_action: str | None
+    retry_of: str | None
+    retry_job_id: str | None
+
+
+@app.get("/jobs/{job_id}/details", response_model=JobDetails)
+def get_job_details(job_id: str, session: Session = Depends(get_session)) -> dict:
+    job = session.get(Job, parse_job_id(job_id))
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return describe_job(session, job)
+
+
+@app.post("/jobs/{job_id}/retry")
+def retry_job(job_id: str, session: Session = Depends(get_session)) -> dict[str, str]:
+    job = session.scalar(select(Job).where(Job.id == parse_job_id(job_id)).with_for_update())
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    # Locking the original plus the unique retry_of constraint makes repeated
+    # clicks return one retry job, preserving the original failed resource.
+    existing = session.scalar(select(Job).where(Job.retry_of == job.id))
+    if existing is not None:
+        return job_response(existing)
+    details = describe_job(session, job)
+    if details["recovery_action"] == "retry_delivery":
+        event = session.scalar(select(OutboxEvent).where(OutboxEvent.job_id == job.id)
+            .order_by(OutboxEvent.created_at.desc(), OutboxEvent.id.desc()).limit(1).with_for_update())
+        if event is None or event.publication_status != "failed":
+            raise HTTPException(status_code=409, detail="Delivery state changed; refresh this job")
+        event.publication_status = "pending"
+        event.retry_count = 0
+        event.next_attempt_at = None
+        session.commit()
+        return job_response(job)
+    if details["recovery_action"] != "retry_processing":
+        raise HTTPException(status_code=409, detail=details["message"] or "This job is not eligible for retry")
+    retry = Job(name=job.name, job_type="csv", retry_of=job.id)
+    retry.csv_analysis = CsvAnalysis(storage_filename=job.csv_analysis.storage_filename)
+    session.add(retry)
+    session.flush()
+    session.add(OutboxEvent(job_id=retry.id))
+    session.commit()
+    return job_response(retry)

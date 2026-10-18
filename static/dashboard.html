@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f8fa">
   <title>FlowForge — Analysis workspace</title>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=2">
-  <script src="/assets/dashboard.js?v=2" defer></script>
+  <link rel="stylesheet" href="/assets/dashboard.css?v=3">
+  <script src="/assets/dashboard.js?v=3" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to workspace</a>
@@ -19,13 +19,13 @@
       <a class="nav-item" href="https://github.com/IdoCohen14/FlowForge" target="_blank" rel="noopener"><span aria-hidden="true">⌥</span> Source code <span class="external">↗</span></a>
     </nav>
     <div class="sidebar-note"><span class="small-icon" aria-hidden="true">◇</span><strong>Built for the work behind the work.</strong><p>Upload once. Follow every job. Understand your data.</p></div>
-    <div class="local-label"><span class="connection-dot"></span> Local workspace <span class="version">v1.1</span></div>
+    <div class="local-label"><span class="connection-dot"></span> Local workspace <span class="version">v1.2</span></div>
   </aside>
 
   <main id="main">
     <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>Overview</strong></div><div class="connection" id="connection" role="status"><span class="connection-dot"></span><span id="connection-text">Connecting</span></div></header>
     <div class="page-content">
-      <section class="page-heading"><div><div class="eyebrow">YOUR ANALYSIS WORKSPACE</div><h1>Good data. Clear decisions<span>.</span></h1><p>A little less spreadsheet detective work. A lot more clarity.</p></div><button class="button secondary" id="sample-button"><span aria-hidden="true">▷</span> Try sample data</button></section>
+      <section class="page-heading"><div><div class="eyebrow">DATASET WORKSPACE</div><h1>Your data, in focus<span>.</span></h1><p>Preview a file, explore the findings, and keep every analysis in reach.</p></div><button class="button secondary" id="sample-button"><span aria-hidden="true">▷</span> Try sample data</button></section>
 
       <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
       <section class="metrics" aria-label="Job overview">
@@ -35,6 +35,8 @@
         <article class="metric"><div class="metric-label">Needs attention <span class="metric-icon orange">!</span></div><strong id="count-failed">—</strong><small>Jobs that failed</small></article>
       </section>
 
+      <div class="dataset-layout">
+<aside class="dataset-sidebar" aria-label="Upload and history">
       <div class="workspace-grid">
         <section class="panel upload-panel" aria-labelledby="upload-title">
           <div class="panel-heading"><div class="section-icon" aria-hidden="true">↥</div><div><h2 id="upload-title">Start with a CSV</h2><p>One file. A fresh perspective.</p></div></div>
@@ -51,11 +53,18 @@
             <input class="text-input" id="name" maxlength="200" placeholder="e.g. October sales report" autocomplete="off">
             <button class="button primary full-width" id="upload-button" type="submit">Create analysis <span aria-hidden="true">↗</span></button>
           </form>
+
+          <div id="preview-panel" class="preview-panel" hidden>
+            <div class="preview-heading"><strong>File preview</strong><span id="preview-caption"></span></div>
+            <p id="preview-message" role="status"></p>
+            <div class="table-scroll"><table class="preview-table"><thead id="preview-head"></thead><tbody id="preview-body"></tbody></table></div>
+            <small>Preview only · no job created. Preview files are discarded.</small>
+          </div>
           <div class="upload-note"><span aria-hidden="true">◇</span><p>Your file is processed in the background.<br>You can keep working while we handle it.</p></div>
         </section>
 
         <section class="panel jobs-panel" aria-labelledby="jobs-title">
-          <div class="panel-heading jobs-heading"><div><h2 id="jobs-title">Your jobs</h2><p>A live view of what’s moving.</p></div><button class="icon-button" id="refresh-button" aria-label="Refresh jobs" title="Refresh jobs">↻</button></div>
+          <div class="panel-heading jobs-heading"><div><h2 id="jobs-title">Analysis history</h2><p>Search and revisit your datasets.</p></div><button class="icon-button" id="refresh-button" aria-label="Refresh jobs" title="Refresh jobs">↻</button></div>
           <div class="job-controls"><div class="search-field"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search analyses…" aria-label="Search job names" maxlength="200"></div><select id="status-filter" aria-label="Filter by job status"><option value="">All statuses</option><option value="pending">Queued</option><option value="running">Processing</option><option value="completed">Completed</option><option value="failed">Failed</option></select></div>
           <div class="table-scroll"><table class="jobs-table"><thead><tr><th scope="col">ANALYSIS</th><th scope="col">STATUS</th><th scope="col" class="submitted-column">SUBMITTED</th><th scope="col"><span class="visually-hidden">Open results</span></th></tr></thead><tbody id="jobs-body"></tbody></table></div>
           <div class="empty-state" id="jobs-empty" hidden><span aria-hidden="true">▦</span><strong>No jobs here yet</strong><p>Upload a CSV or try the sample to get started.</p></div>
@@ -63,14 +72,18 @@
         </section>
       </div>
 
+</aside>
       <section class="panel results-panel" id="analysis-panel" aria-labelledby="analysis-title">
-        <div class="panel-heading results-heading"><div><div class="eyebrow">THE BIGGER PICTURE</div><h2 id="analysis-title">A closer look at your data</h2><p id="analysis-subtitle">Select a CSV job above to explore its results.</p></div><button class="button secondary" id="export-button" disabled>↓ Export JSON</button></div>
+        <div class="panel-heading results-heading"><div><div class="eyebrow">SELECTED DATASET</div><h2 id="analysis-title">A closer look at your data</h2><p id="analysis-subtitle">Choose a dataset from the history or upload a new file.</p></div><button class="button secondary" id="export-button" disabled>↓ Export JSON</button></div>
         <div id="analysis-placeholder" class="analysis-placeholder"><div class="placeholder-art" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><strong>Clarity is one upload away.</strong><p>Row counts, data completeness, and column statistics.<br>All in one place, once your analysis is ready.</p></div>
         <div id="analysis-content" hidden>
           <div class="analysis-meta"><span id="analysis-status" class="badge"></span><span id="analysis-id"></span><span id="analysis-attempts"></span></div>
+          <div class="timing-strip" aria-label="Processing timeline"><div><span>SUBMITTED</span><strong id="time-submitted">—</strong></div><div><span>STARTED</span><strong id="time-started">—</strong></div><div><span>FINISHED</span><strong id="time-finished">—</strong></div><div><span>LAST ATTEMPT</span><strong id="time-duration">—</strong></div></div>
+          <div id="recovery-panel" class="recovery-panel" hidden><div><strong id="recovery-title"></strong><p id="recovery-message"></p></div><button class="button secondary" id="recovery-button"></button></div>
           <div id="analysis-waiting" class="waiting-state" hidden><span class="waiting-icon" aria-hidden="true">↻</span><div><strong id="waiting-title"></strong><p id="waiting-description"></p></div></div>
           <div id="analysis-completed" hidden>
             <div class="result-metrics"><div><span>ROWS</span><strong id="result-rows"></strong></div><div><span>COLUMNS</span><strong id="result-columns"></strong></div><div><span>MISSING CELLS</span><strong id="result-missing"></strong></div><div><span>COMPLETENESS</span><strong id="result-completeness"></strong></div></div>
+            <section class="findings-panel" aria-labelledby="findings-title"><h3 id="findings-title">What your data says</h3><ul id="findings"></ul></section>
             <div class="result-tabs" role="tablist" aria-label="Analysis views"><button id="tab-columns" role="tab" aria-selected="true" aria-controls="view-columns" data-view="columns">Column statistics</button><button id="tab-quality" role="tab" aria-selected="false" aria-controls="view-quality" data-view="quality" tabindex="-1">Data quality</button><button id="tab-json" role="tab" aria-selected="false" aria-controls="view-json" data-view="json" tabindex="-1">JSON</button></div>
             <div id="view-columns" role="tabpanel" aria-labelledby="tab-columns"><div class="table-scroll"><table class="statistics-table"><thead><tr><th scope="col">COLUMN</th><th scope="col">TYPE</th><th scope="col">MISSING</th><th scope="col">MINIMUM</th><th scope="col">MAXIMUM</th><th scope="col">MEAN</th></tr></thead><tbody id="statistics-body"></tbody></table></div><p class="precision-note">Numeric values use decimal arithmetic. Means are rounded to 50 significant digits when needed.</p></div>
             <div id="view-quality" role="tabpanel" aria-labelledby="tab-quality" hidden><p class="quality-note">Nonmissing cells per column. Empty and whitespace-only cells count as missing.</p><div id="quality-bars"></div></div>
@@ -78,6 +91,7 @@
           </div>
         </div>
       </section>
+      </div>
       <footer><span><span class="footer-mark">F</span> A clearer flow, from file to insight.</span><span>Local portfolio deployment <span class="footer-divider">·</span> <a href="/docs">Explore the API ↗</a></span></footer>
     </div>
   </main>

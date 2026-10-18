@@ -7,6 +7,7 @@ const numberFormat = new Intl.NumberFormat();
 const state = {
   page: 1, pageSize: 6, query: "", status: "", selected: null,
   selectedJob: null, selectedFile: null, result: null, resultKey: null,
+  previewing: false, previewReady: false, previewToken: 0, details: null,
   refreshing: false, refreshAgain: false, uploading: false, jobsSignature: "",
 };
 
@@ -49,25 +50,67 @@ function setConnection(online) {
 
 function setBusy(busy) {
   state.uploading = busy;
-  byId("upload-button").disabled = busy;
+  byId("upload-button").disabled = busy || state.previewing || !state.previewReady;
   byId("sample-button").disabled = busy;
   byId("upload-button").textContent = busy ? "Saving your file…" : "Create analysis ↗";
 }
 
-function chooseFile(file) {
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".csv")) {
-    notify("Choose a file with a .csv extension.", true);
-    return;
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    notify("This file exceeds the 10 MiB limit. Choose a smaller CSV.", true);
-    return;
+async function chooseFile(file) {
+  if (!file) return false;
+  const token = ++state.previewToken;
+  state.previewReady = false;
+  state.previewing = false;
+  state.selectedFile = null;
+  setBusy(state.uploading);
+  byId("preview-panel").hidden = false;
+  byId("preview-panel").classList.remove("invalid");
+  byId("preview-head").replaceChildren();
+  byId("preview-body").replaceChildren();
+  byId("preview-caption").textContent = "";
+  byId("file-title").textContent = file.name;
+  byId("file-description").textContent = `${numberFormat.format(file.size)} bytes`;
+  if (!file.name.toLowerCase().endsWith(".csv") || file.size > 10 * 1024 * 1024) {
+    byId("preview-panel").classList.add("invalid");
+    byId("preview-message").textContent = "Choose a .csv file no larger than 10 MiB.";
+    return false;
   }
   state.selectedFile = file;
-  byId("file-title").textContent = file.name;
-  byId("file-description").textContent = `${numberFormat.format(file.size)} bytes · ready to analyze`;
-  notify("");
+  state.previewing = true;
+  byId("preview-message").textContent = "Validating your CSV and preparing a preview…";
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const preview = await request("/jobs/csv/preview", {method: "POST", body: form});
+    if (token !== state.previewToken) return false;
+    const header = element("tr");
+    for (const label of preview.headers) {
+      const cell = element("th", label);
+      cell.scope = "col";
+      header.append(cell);
+    }
+    byId("preview-head").replaceChildren(header);
+    for (const values of preview.rows) {
+      const row = element("tr");
+      for (const value of values) row.append(element("td", value || "—"));
+      byId("preview-body").append(row);
+    }
+    byId("preview-caption").textContent = `${preview.column_count} columns`;
+    const notes = [`${preview.rows.length} preview rows${preview.has_more_rows ? " · more rows in file" : ""}`];
+    if (preview.column_count > preview.headers.length) notes.push(`first ${preview.headers.length} columns shown`);
+    if (preview.truncated_cells) notes.push("long cells shortened for display");
+    if (!preview.rows.length) notes.push("header-only CSV");
+    byId("preview-message").textContent = notes.join(" · ");
+    state.previewReady = true;
+    notify("");
+    return true;
+  } catch (error) {
+    if (token !== state.previewToken) return false;
+    byId("preview-panel").classList.add("invalid");
+    byId("preview-message").textContent = `CSV validation failed: ${error.message}`;
+    return false;
+  } finally {
+    if (token === state.previewToken) { state.previewing = false; setBusy(state.uploading); }
+  }
 }
 
 async function upload(file, name) {
@@ -75,6 +118,10 @@ async function upload(file, name) {
   if (!file) {
     notify("Choose a CSV file first, or try the sample data.", true);
     byId("file").focus();
+    return;
+  }
+  if (state.previewing || !state.previewReady || file !== state.selectedFile) {
+    notify("Wait for a valid preview before creating the analysis.", true);
     return;
   }
   setBusy(true);
@@ -113,6 +160,9 @@ function selectJob(job, scroll = true) {
   state.selectedJob = job;
   state.resultKey = null;
   state.result = null;
+  state.details = null;
+  byId("recovery-panel").hidden = true;
+  for (const id of ["time-submitted", "time-started", "time-finished", "time-duration"]) byId(id).textContent = "—";
   state.jobsSignature = "";
   byId("export-button").disabled = true;
   byId("analysis-title").textContent = job.name;
@@ -151,7 +201,7 @@ function renderJobs(data) {
   byId("jobs-empty").querySelector("p").textContent = state.query || state.status ? "Try another name or a different status filter." : "Upload a CSV or try the sample to get started.";
 
   // Preserve focused controls when a polling response has not changed.
-  const signature = JSON.stringify([data.items, state.selected]);
+  const signature = JSON.stringify([data.items, state.selected, Math.floor(Date.now() / 60000)]);
   if (signature === state.jobsSignature) return;
   state.jobsSignature = signature;
   const fragment = document.createDocumentFragment();
@@ -225,12 +275,44 @@ function renderResults(result) {
   byId("statistics-body").replaceChildren(rows);
   byId("quality-bars").replaceChildren(bars);
   byId("json-results").textContent = JSON.stringify(result, null, 2);
+  renderFindings(data);
+}
+
+function renderFindings(data) {
+  const findings = [];
+  if (!data.row_count) findings.push("This file contains column headers but no data rows. Add rows to calculate statistics.");
+  else if (!data.missing_values_total) findings.push(`All ${numberFormat.format(data.row_count * data.column_count)} cells contain a value. This measures completeness, not accuracy.`);
+  else findings.push(`${numberFormat.format(data.missing_values_total)} cells are missing across ${numberFormat.format(data.row_count)} rows. Empty and whitespace-only cells count as missing.`);
+  const incomplete = data.columns.filter((column) => column.missing_values > 0).sort((a, b) => b.missing_values - a.missing_values);
+  if (incomplete.length) findings.push(`${incomplete[0].name} has the most missing values: ${numberFormat.format(incomplete[0].missing_values)} of ${numberFormat.format(data.row_count)} rows.`);
+  for (const column of data.columns.filter((column) => column.numeric).slice(0, 3)) {
+    const stats = column.numeric;
+    findings.push(`${column.name}: average ${stats.mean}, ranging from ${stats.minimum} to ${stats.maximum}, across ${numberFormat.format(stats.count)} nonmissing numeric values.`);
+  }
+  if (data.row_count && !data.columns.some((column) => column.numeric)) findings.push("No column qualifies for numeric statistics. Numeric columns require every nonmissing value to be a supported finite number.");
+  byId("findings").replaceChildren(...findings.map((text) => element("li", text)));
+}
+
+function renderDetails(details) {
+  state.details = details;
+  showJobMetadata(details);
+  const date = (value) => value ? new Date(value).toLocaleString(undefined, {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "Not recorded";
+  byId("time-submitted").textContent = date(details.created_at);
+  byId("time-started").textContent = date(details.started_at);
+  byId("time-finished").textContent = date(details.finished_at);
+  byId("time-duration").textContent = details.processing_seconds === null ? "Not recorded" : `${details.processing_seconds.toFixed(3)} s`;
+  byId("recovery-panel").hidden = !details.recovery_action;
+  byId("recovery-title").textContent = ({delivery: "Delivery needs attention", validation: "The file needs correction", storage: "A new source file is needed", interrupted: "Processing was interrupted", processing: "Processing failed"})[details.failure_stage] || "Analysis needs attention";
+  byId("recovery-message").textContent = details.message || "";
+  byId("recovery-button").textContent = details.retry_job_id ? "Open retry" : details.recovery_action === "upload" ? "Choose a new file" : details.recovery_action === "retry_delivery" ? "Retry delivery" : "Retry analysis";
 }
 
 async function refreshSelection() {
   if (!state.selectedJob) return;
   const job = state.selectedJob;
-  showJobMetadata(job);
+  const details = await request(`/jobs/${job.id}/details`);
+  if (state.selected !== job.id) return;
+  renderDetails(details);
   if (job.job_type !== "csv") {
     byId("analysis-waiting").hidden = false;
     byId("waiting-title").textContent = `${statusLabels[job.status] || job.status} demo job`;
@@ -256,8 +338,8 @@ async function refreshSelection() {
       failed: ["This analysis couldn’t be completed", "Check the CSV format and try a new upload. The original job remains available for inspection."],
     };
     const [title, description] = messages[result.status] || ["Results unavailable", "Please refresh to check this job again."];
-    byId("waiting-title").textContent = title;
-    byId("waiting-description").textContent = description;
+    byId("waiting-title").textContent = details.failure_stage === "delivery" ? "Delivery is paused" : title;
+    byId("waiting-description").textContent = details.failure_stage === "delivery" ? "This job has not reached a worker. Use Retry delivery to resume." : description;
   }
 }
 
@@ -320,8 +402,9 @@ byId("sample-button").addEventListener("click", async () => {
     const response = await fetch("/samples/sales.csv");
     if (!response.ok) throw new Error("The sample file could not be loaded.");
     const sample = new File([await response.blob()], "sales.csv", {type: "text/csv"});
+    const valid = await chooseFile(sample);
     setBusy(false);
-    await upload(sample, "Sales sample analysis");
+    if (valid) await upload(sample, "Sales sample analysis");
   } catch (error) { notify(error.message, true); setBusy(false); }
 });
 let searchTimer;
@@ -357,6 +440,32 @@ byId("export-button").onclick = () => {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
+byId("recovery-button").onclick = async () => {
+  const details = state.details;
+  if (!details) return;
+  if (details.recovery_action === "upload" && !details.retry_job_id) {
+    byId("upload-form").scrollIntoView({block: "center"});
+    byId("file").focus();
+    byId("file").click();
+    return;
+  }
+  byId("recovery-button").disabled = true;
+  try {
+    const job = details.retry_job_id
+      ? await request(`/jobs/${details.retry_job_id}/details`)
+      : await request(`/jobs/${details.id}/retry`, {method: "POST"});
+    selectJob({...job, job_type: "csv"}, false);
+    state.page = 1;
+    state.query = "";
+    state.status = "";
+    byId("search").value = "";
+    byId("status-filter").value = "";
+    notify(details.recovery_action === "retry_delivery" ? "Delivery has been queued again." : "Retry opened. The original analysis has been preserved.");
+    await refresh();
+  } catch (error) { notify(error.message, true); }
+  finally { byId("recovery-button").disabled = false; }
+};
+setBusy(false);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 3000);
 refresh();

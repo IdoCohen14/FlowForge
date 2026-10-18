@@ -14,7 +14,7 @@ from database import get_application_engine
 from job_lifecycle import ALLOWED_TRANSITIONS
 from models import CsvAnalysis, Job
 from csv_analysis import CsvValidationError, analyze_csv
-from file_storage import resolve_storage_path
+from file_storage import FileStorageError, resolve_storage_path
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,10 @@ def process_job(job_id: str) -> None:
         token = uuid4()
         job.claim_token = token
         job.attempt_count += 1
-        job.lease_expires_at = session.scalar(select(func.now())) + timedelta(minutes=5)
+        job.started_at = session.scalar(select(func.now()))
+        job.finished_at = None
+        job.failure_code = None
+        job.lease_expires_at = job.started_at + timedelta(minutes=5)
         name = job.name
         job_type = job.job_type
     # The committed claim prevents another delivery from executing the operation.
@@ -75,6 +78,10 @@ def process_job(job_id: str) -> None:
                     if analysis is not None:
                         analysis.results = results if processing_error is None else None
                         analysis.error_message = safe_error
+                job.finished_at = session.scalar(select(func.now()))
+                if processing_error is not None:
+                    job.failure_code = ("validation" if isinstance(processing_error, CsvValidationError)
+                        else "storage" if isinstance(processing_error, (FileStorageError, OSError)) else "processing")
                 job.status = target
                 job.claim_token = None
                 job.lease_expires_at = None

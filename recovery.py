@@ -22,10 +22,16 @@ def recover_expired_jobs(engine: Engine, batch_size: int = 20, now: datetime | N
             job.lease_expires_at = None
             if job.attempt_count >= MAX_PROCESSING_ATTEMPTS:
                 job.status = "failed"
+                # Expiry is detection time, not the crashed worker's finish time.
+                job.finished_at = None
+                job.failure_code = "interrupted"
                 if job.csv_analysis is not None:
                     job.csv_analysis.results = None
                     job.csv_analysis.error_message = "CSV processing failed"
             else:
                 job.status = "pending"
+                job.started_at = None
+                job.finished_at = None
+                job.failure_code = None
                 session.add(OutboxEvent(job_id=job.id))
         return len(jobs)
