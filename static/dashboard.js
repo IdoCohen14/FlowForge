@@ -7,6 +7,7 @@ const numberFormat = new Intl.NumberFormat();
 const state = {
   page: 1, pageSize: 6, query: "", status: "", selected: null,
   selectedJob: null, selectedFile: null, result: null, resultKey: null,
+  columnQuery: "", columnSort: "original",
   previewing: false, previewReady: false, previewToken: 0, details: null,
   refreshing: false, refreshAgain: false, uploading: false, jobsSignature: "",
 };
@@ -156,6 +157,10 @@ function submittedLabel(timestamp) {
 }
 
 function selectJob(job, scroll = true) {
+  state.columnQuery = "";
+  state.columnSort = "original";
+  byId("column-search").value = "";
+  byId("column-sort").value = "original";
   state.selected = job.id;
   state.selectedJob = job;
   state.resultKey = null;
@@ -250,7 +255,10 @@ function renderResults(result) {
   byId("result-completeness").textContent = cells ? `${(100 * (1 - data.missing_values_total / cells)).toFixed(1)}%` : "—";
   const rows = document.createDocumentFragment();
   const bars = document.createDocumentFragment();
-  for (const column of data.columns) {
+  const columns = FlowForgeColumns.selectColumns(data.columns, state.columnQuery, state.columnSort);
+  byId("column-count").textContent = `${columns.length} of ${data.columns.length} columns`;
+  byId("columns-empty").hidden = columns.length > 0;
+  for (const column of columns) {
     const row = element("tr");
     row.append(element("td", column.name));
     const type = element("td");
@@ -465,6 +473,34 @@ byId("recovery-button").onclick = async () => {
   } catch (error) { notify(error.message, true); }
   finally { byId("recovery-button").disabled = false; }
 };
+function syncThemeButton() {
+  const light = document.documentElement.dataset.theme === "light";
+  byId("theme-toggle").textContent = light ? "☾ Dark mode" : "☀ Light mode";
+  byId("theme-toggle").setAttribute("aria-label", light ? "Use dark theme" : "Use light theme");
+  byId("theme-toggle").setAttribute("aria-pressed", String(light));
+  document.querySelector('meta[name="theme-color"]').content = light ? "#f4f7fb" : "#10141c";
+}
+byId("theme-toggle").onclick = () => {
+  const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("flowforge-theme", theme); } catch (_) {}
+  syncThemeButton();
+};
+window.addEventListener("storage", (event) => {
+  if (event.key === "flowforge-theme" || event.key === null) {
+    document.documentElement.dataset.theme = event.newValue === "light" ? "light" : "dark";
+    syncThemeButton();
+  }
+});
+byId("column-search").addEventListener("input", () => {
+  state.columnQuery = byId("column-search").value;
+  if (state.result) renderResults(state.result);
+});
+byId("column-sort").addEventListener("change", () => {
+  state.columnSort = byId("column-sort").value;
+  if (state.result) renderResults(state.result);
+});
+syncThemeButton();
 setBusy(false);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 3000);

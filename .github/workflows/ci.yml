@@ -29,7 +29,25 @@ jobs:
         with:
           python-version: '3.14'
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
       - run: python -m pip install -r requirements.txt
+      - run: npm ci
       - run: node --check static/dashboard.js
+      - run: node --check static/theme.js
+      - run: npm test
       - run: python -m pytest -q
       - run: python scripts/verify_pipeline.py
+      - run: npx playwright install --with-deps chromium
+      - run: python scripts/run_browser_tests.py
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

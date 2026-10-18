@@ -35,3 +35,8 @@ Thumbs.db
 
 # Local uploaded datasets
 /uploads/
+
+# Browser testing artifacts
+node_modules/
+test-results/
+playwright-report/

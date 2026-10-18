@@ -3,11 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/assets/theme.js?v=1"></script>
   <meta name="theme-color" content="#10141c">
   <title>FlowForge — Analysis workspace</title>
   <link rel="stylesheet" href="/assets/dashboard.css?v=3">
-  <link rel="stylesheet" href="/assets/dashboard-theme.css?v=2">
-  <script src="/assets/dashboard.js?v=3" defer></script>
+  <link rel="stylesheet" href="/assets/dashboard-theme.css?v=3">
+  <script src="/assets/column-tools.js?v=1" defer></script>
+  <script src="/assets/dashboard.js?v=4" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to workspace</a>
@@ -15,12 +17,13 @@
     <a class="brand" href="/dashboard"><span class="brand-mark" aria-hidden="true">F</span>FlowForge<span class="brand-dot">.</span></a>
     <div class="workspace-label">WORKSPACE</div>
     <nav aria-label="Workspace">
+      <button class="button secondary theme-toggle" id="theme-toggle" aria-pressed="false" aria-label="Use light theme">☀ Light mode</button>
       <a class="nav-item active" href="/dashboard" aria-current="page"><span aria-hidden="true">▦</span> Overview</a>
       <a class="nav-item" href="/docs"><span aria-hidden="true">⌘</span> API explorer <span class="external">↗</span></a>
       <a class="nav-item" href="https://github.com/IdoCohen14/FlowForge" target="_blank" rel="noopener"><span aria-hidden="true">⌥</span> Source code <span class="external">↗</span></a>
     </nav>
     <div class="sidebar-note"><span class="small-icon" aria-hidden="true">◇</span><strong>Built for the work behind the work.</strong><p>Upload once. Follow every job. Understand your data.</p></div>
-    <div class="local-label"><span class="connection-dot"></span> Local workspace <span class="version">v1.2</span></div>
+    <div class="local-label"><span class="connection-dot"></span> Local workspace <span class="version">v1.3</span></div>
   </aside>
 
   <main id="main">
@@ -86,6 +89,8 @@
             <div class="result-metrics"><div><span>ROWS</span><strong id="result-rows"></strong></div><div><span>COLUMNS</span><strong id="result-columns"></strong></div><div><span>MISSING CELLS</span><strong id="result-missing"></strong></div><div><span>COMPLETENESS</span><strong id="result-completeness"></strong></div></div>
             <section class="findings-panel" aria-labelledby="findings-title"><h3 id="findings-title">What your data says</h3><ul id="findings"></ul></section>
             <div class="result-tabs" role="tablist" aria-label="Analysis views"><button id="tab-columns" role="tab" aria-selected="true" aria-controls="view-columns" data-view="columns">Column statistics</button><button id="tab-quality" role="tab" aria-selected="false" aria-controls="view-quality" data-view="quality" tabindex="-1">Data quality</button><button id="tab-json" role="tab" aria-selected="false" aria-controls="view-json" data-view="json" tabindex="-1">JSON</button></div>
+            <div class="column-controls"><div class="search-field"><span aria-hidden="true">⌕</span><input id="column-search" type="search" placeholder="Find a column…" aria-label="Search column names"></div><select id="column-sort" aria-label="Sort columns"><option value="original">File order</option><option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option><option value="missing_desc">Most missing first</option><option value="missing_asc">Fewest missing first</option><option value="mean_desc">Highest mean first</option><option value="mean_asc">Lowest mean first</option></select><span id="column-count" role="status" aria-live="polite"></span></div>
+            <p id="columns-empty" class="quality-note" hidden>No matching columns. Try a different name.</p>
             <div id="view-columns" role="tabpanel" aria-labelledby="tab-columns"><div class="table-scroll"><table class="statistics-table"><thead><tr><th scope="col">COLUMN</th><th scope="col">TYPE</th><th scope="col">MISSING</th><th scope="col">MINIMUM</th><th scope="col">MAXIMUM</th><th scope="col">MEAN</th></tr></thead><tbody id="statistics-body"></tbody></table></div><p class="precision-note">Numeric values use decimal arithmetic. Means are rounded to 50 significant digits when needed.</p></div>
             <div id="view-quality" role="tabpanel" aria-labelledby="tab-quality" hidden><p class="quality-note">Nonmissing cells per column. Empty and whitespace-only cells count as missing.</p><div id="quality-bars"></div></div>
             <div id="view-json" role="tabpanel" aria-labelledby="tab-json" hidden><pre id="json-results" tabindex="0"></pre></div>

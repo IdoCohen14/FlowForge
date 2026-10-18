@@ -137,6 +137,8 @@ If old Windows temporary directories are owned by a different account, give pyte
 
 ## Dataset details and recovery
 
+A dark/light theme switch remembers the choice in local browser storage; dark remains the default and blocked storage does not prevent the dashboard from working. Column search and sorting apply to the statistics table and quality bars, while dataset totals, findings, and JSON export always describe all columns. Numeric mean sorting compares decimal strings without binary-float conversion.
+
 The desktop workspace prioritizes the selected dataset, with upload and searchable history in a compact sidebar. Findings are deterministic descriptions of the stored statistics, not AI interpretations. Data completeness does not establish accuracy. Numeric means are displayed as their original Decimal strings.
 
 Selecting a CSV first uploads it for server validation and a bounded preview. Preview files are removed after the response is prepared, including error paths; no job, analysis metadata, or outbox event is created. The complete CSV is validated, but only five rows and eight columns are shown, with long cell values clipped to 200 characters. Creating an analysis uploads and validates the source again. The same 10 MiB file and 11 MiB request limits apply to both endpoints. A crash can still leave an orphan preview file because storage has no retention sweep.
@@ -144,6 +146,23 @@ Selecting a CSV first uploads it for server validation and a bounded preview. Pr
 Worker claims and finalization record `started_at` and `finished_at`; the displayed duration is the last recorded attempt's wall-clock time, excluding queue wait. Interrupted attempts have no invented duration, and pre-migration jobs show missing timing as “Not recorded.” Submission time comes from the earliest outbox event.
 
 Validation or missing-file failures require a corrected/new upload. Other failed CSV jobs can create a linked retry that references the existing stored file, preserving the original failed job and error history. Row locking and a unique `retry_of` constraint ensure repeated/concurrent retries of the same original return one child. A failed child may itself be retried explicitly. Both metadata and the new outbox event commit together; raw errors and storage paths are never returned. Files referenced by retry chains must be retained. Delivery retry keeps the original job ID and resets only its latest failed outbox event. Repeated explicit operator retries are not globally limited; add authorization, quotas and rate limits before public exposure.
+
+## Browser tests
+
+Install a supported Node.js version (CI uses Node 22), then install the pinned test dependencies and Chromium:
+
+```powershell
+npm.cmd ci
+npx.cmd playwright install chromium
+npm.cmd test
+.\.venv\Scripts\python.exe scripts/run_browser_tests.py
+```
+
+The Python harness starts a separate API, dispatcher and Celery worker against a generated PostgreSQL database, upload directory, Redis key/queue prefix, and ephemeral loopback port. It seeds synthetic failed jobs for recovery tests and removes only its own resources afterward. It never reuses the development server. PostgreSQL/Redis must be running and the configured role must have database-creation permission. Running Playwright directly without the harness fails deliberately.
+
+The suite runs real Chromium at desktop and mobile viewport sizes. It covers preview and upload, rejected CSVs, sample data, job search/filtering, statistics/quality/JSON tabs, keyboard tab navigation, exact-decimal sorting, full JSON downloads after column filtering, processing and delivery retries, remembered themes, blocked storage, and horizontal page overflow. Mobile coverage is Chromium device emulation, not a physical-device or Safari test. Failure traces/screenshots and the HTML report are local ignored artifacts; CI uploads them when a check fails. See [Playwright CI guidance](https://playwright.dev/docs/ci).
+
+`npm test` separately covers decimal comparison, column filtering, stable ties, and nonnumeric sort placement without starting a browser. The npm dependencies are development-only; the application still runs without Node.js.
 
 ## Benchmark
 

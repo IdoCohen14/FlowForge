@@ -18,7 +18,7 @@ from file_storage import FileStorageError, UnsupportedFileType, UploadTooLarge, 
 from job_lifecycle import ALLOWED_TRANSITIONS
 from job_details import describe_job
 
-app = FastAPI(title="FlowForge", version="1.2.0", description="Durable background CSV analysis with a transactional outbox and bounded worker recovery.")
+app = FastAPI(title="FlowForge", version="1.3.0", description="Durable background CSV analysis with a transactional outbox and bounded worker recovery.")
 
 
 class UploadBodyLimit:

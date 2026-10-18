@@ -139,3 +139,68 @@ footer a:hover { color: var(--text); }
   border-color: #8edcff;
   box-shadow: 0 0 18px #59bfff20;
 }
+
+
+.theme-toggle { margin-right: 8px; }
+.column-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 18px 28px; }
+.column-controls .search-field { flex: 1; min-width: 150px; }
+.column-controls select { border: 1px solid #4294c3; background: var(--input-surface); color: var(--input-text); border-radius: 5px; font-size: 12px; padding: 10px; }
+.column-controls > span { color: var(--muted); font-size: 12px; }
+.column-controls select:focus-visible { outline-color: #8edcff; }
+@media(max-width:580px) { .sidebar { gap: 8px; padding-inline: 14px; } .theme-toggle { font-size: 11px; padding: 9px; margin-right: 0; } .column-controls { padding-inline: 18px; } }
+
+/* A complete light palette; input accents stay blue in either theme. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --page: #f4f7fb; --surface: #ffffff; --raised: #edf2f8; --text: #233146;
+  --muted: #586b82; --subtle: #637990; --line: #d6e0ec; --accent: #a84520;
+  --input-surface: #edf7ff; --input-border: #287bb4; --input-text: #183d57; --input-placeholder: #4f7088;
+  --success-bg: #e8f5ed; --success-text: #286748;
+  --warning-bg: #fff4e6; --warning-text: #875326;
+  background: var(--page); color: var(--text);
+}
+[data-theme="light"] .brand-mark { background: #ef916b; color: #1d2634; }
+[data-theme="light"] .nav-item.active { color: #a84520; background: #fff0e6; }
+[data-theme="light"] .nav-item.active:hover { background: #ffe3d2; }
+[data-theme="light"] .button.primary { background: #b74c27; color: #fff; border-color: #b74c27; }
+[data-theme="light"] .button.primary:hover:not(:disabled) { background: #963b1c; border-color: #963b1c; }
+[data-theme="light"] .button.secondary,[data-theme="light"] .icon-button { border-color: #bdcadc; }
+[data-theme="light"] .button.secondary:hover:not(:disabled),[data-theme="light"] .icon-button:hover:not(:disabled) { border-color: #8297b4; }
+[data-theme="light"] .text-input,[data-theme="light"] .search-field,[data-theme="light"] .job-controls select,[data-theme="light"] .column-controls select { border-color: #6da1c8; box-shadow: 0 0 10px #228bd50b; }
+[data-theme="light"] .text-input:focus,[data-theme="light"] .search-field:focus-within,[data-theme="light"] .job-controls select:focus { background: #e4f3ff; outline-color: #287bb4; border-color: #287bb4; }
+[data-theme="light"] .dropzone { background: #f1f8fe; border-color: #75a1c3; }
+[data-theme="light"] .dropzone.dragging,[data-theme="light"] .dropzone:focus-within { background: #e1f2ff; border-color: #287bb4; }
+[data-theme="light"] .section-icon { background: #fff0e6; border-color: #edc9af; color: #a84520; }
+[data-theme="light"] th,[data-theme="light"] .result-metrics { background: #f3f6fb; }
+[data-theme="light"] td { color: #405775; }
+[data-theme="light"] .job-name,[data-theme="light"] .statistics-table td:first-child { color: var(--text); }
+[data-theme="light"] .jobs-table tr.selected td { background: #fff5ec; }
+[data-theme="light"] .badge { background: #e9eef5; color: #4c607b; }
+[data-theme="light"] .badge.running { background: #e9f1ff; color: #365f9f; }
+[data-theme="light"] .badge.completed { background: #e8f5ed; color: #286748; }
+[data-theme="light"] .badge.failed { background: #ffebe6; color: #9e4334; }
+[data-theme="light"] .type-label { background: #eaf0f7; color: #486280; }
+[data-theme="light"] .findings-panel,[data-theme="light"] .notice { background: #edf7f0; border-color: #bdd8c6; }
+[data-theme="light"] .findings-panel h3 { color: #2e6241; }
+[data-theme="light"] .findings-panel ul,[data-theme="light"] .notice { color: #3b624a; }
+[data-theme="light"] .quality-label > span { color: #3d6c52; }
+[data-theme="light"] .quality-track { background: #f0ddd5; }
+[data-theme="light"] .quality-fill { background: #4f926f; }
+[data-theme="light"] #json-results { background: #f0f4fa; color: #385676; }
+[data-theme="light"] .recovery-panel { border-color: #e7c59a; }
+[data-theme="light"] .recovery-panel strong { color: #80501f; }
+[data-theme="light"] .recovery-panel p { color: #78582f; }
+[data-theme="light"] .preview-panel.invalid #preview-message { color: #9e4334; }
+[data-theme="light"] .notice.error { background: #ffebe6; border-color: #e5b5a8; color: #9e4334; }
+[data-theme="light"] .waiting-icon { color: #3c6ea7; }
+[data-theme="light"] :focus-visible { outline-color: #287bb4; }
+[data-theme="light"] ::selection { background: #c6e8ff; color: #183d57; }
+
+[data-theme="light"] .column-controls select:focus-visible { outline-color: #287bb4; }
+@media(max-width:580px) { .sidebar .nav-item[aria-current="page"] { display: none; } }
+@media(max-width:420px) { .sidebar .nav-item[href^="https://github.com"] { display: none; } }
+
+/* Keep wide statistics readable; smaller screens scroll the table itself. */
+.statistics-table { min-width: 700px; }
+.statistics-table td:first-child { min-width: 120px; }
+.statistics-table .type-label { white-space: nowrap; }

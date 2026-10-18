@@ -91,8 +91,8 @@ def test_dashboard_assets_and_sample_pipeline(client, test_engine, monkeypatch):
     monkeypatch.setattr(tasks, "get_application_engine", lambda: test_engine)
     page = client.get("/dashboard")
     assert page.status_code == 200
-    assert "/assets/dashboard.js?v=3" in page.text
-    for path, media_type in [("dashboard.css", "text/css"), ("dashboard.js", "javascript")]:
+    assert "/assets/dashboard.js?v=4" in page.text
+    for path, media_type in [("dashboard.css", "text/css"), ("dashboard-theme.css", "text/css"), ("dashboard.js", "javascript"), ("theme.js", "javascript"), ("column-tools.js", "javascript")]:
         asset = client.get("/assets/"+path)
         assert asset.status_code == 200 and media_type in asset.headers["content-type"]
     assert client.get("/assets/missing.js").status_code == 404
