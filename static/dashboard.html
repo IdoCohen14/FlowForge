@@ -1,25 +1,85 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FlowForge · CSV analysis</title>
-<style>
-:root{color-scheme:dark;font:16px system-ui;background:#0b111b;color:#e5edf8}*{box-sizing:border-box}body{max-width:1120px;margin:auto;padding:36px 24px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:48px}a{color:#82d9c2}h1{font-size:44px;letter-spacing:-2px;margin:8px 0}h2{font-size:20px}p{color:#9cabc2;line-height:1.6}.tag{color:#82d9c2;font-size:12px;letter-spacing:2px;text-transform:uppercase}.grid{display:grid;grid-template-columns:1fr 1.3fr;gap:24px}.card{background:#121c2b;border:1px solid #28364a;border-radius:16px;padding:26px;margin-top:20px}input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #3b4e68;width:100%;margin-top:10px;background:#0b111b;color:inherit}button{background:#82d9c2;color:#08241d;cursor:pointer;font-weight:700}button:disabled{opacity:.5;cursor:wait}label{display:block;margin-top:18px;color:#cbd8e9;font-size:14px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #29374c;overflow-wrap:anywhere}th{color:#9cabc2}.scroll{overflow:auto}#notice{min-height:24px;color:#82d9c2}#results{white-space:pre-wrap;overflow-wrap:anywhere}.job{background:transparent;color:#e5edf8;text-align:left;font-weight:400}.job:hover{border-color:#82d9c2}.status{float:right;color:#82d9c2;font-size:12px}small{color:#9cabc2}footer{margin-top:40px;color:#9cabc2;font-size:13px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:34px}}
-</style></head><body>
-<header><strong>◈ FlowForge</strong><a href="/docs">API documentation ↗</a></header>
-<div class="tag">Background processing / CSV intelligence</div><h1>Your data. A clearer picture.</h1>
-<p>Upload a CSV and follow its journey from a durable job to a finished analysis.</p>
-<div class="grid"><section><div class="card"><h2>Create an analysis</h2><p>UTF-8 CSV · up to 10 MiB · 256 columns</p>
-<form id="upload"><label for="name">Analysis name</label><input id="name" name="name" placeholder="Quarterly sales" maxlength="200">
-<label for="file">CSV file</label><input id="file" name="file" type="file" accept=".csv" required><button id="submit">Upload & analyze</button></form>
-<p id="notice" role="status" aria-live="polite"></p></div>
-<div class="card"><h2>Recent jobs</h2><small>Refreshes every two seconds while this page is open.</small><div id="jobs"></div></div></section>
-<section class="card"><div class="tag" id="state">Ready when you are</div><h2 id="title">Analysis results</h2><p id="summary">Select a job or upload your first CSV to see row counts, missing values, and numeric statistics.</p><div id="results"></div></section></div>
-<footer>Portfolio demo · PostgreSQL is the source of truth · Decimal statistics are returned as strings. Local use; authentication is not configured.</footer>
-<script>
-const $=id=>document.getElementById(id); let selected=null, busy=false;
-async function request(url,options){const response=await fetch(url,options);const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:'Request failed');return body}
-function cell(row,text,tag='td'){const el=document.createElement(tag);el.textContent=text;row.append(el)}
-async function refresh(){if(busy)return;busy=true;try{const jobs=await request('/jobs');$('jobs').replaceChildren();for(const job of jobs.slice(-12).reverse()){const button=document.createElement('button');button.className='job';button.textContent=job.name;const state=document.createElement('span');state.className='status';state.textContent=job.status;button.append(state);button.onclick=()=>{selected=job.id;$('title').textContent=job.name;refreshSelection()};$('jobs').append(button)}if(!jobs.length)$('jobs').textContent='No jobs yet.';await refreshSelection()}catch(error){$('notice').textContent=error.message}finally{busy=false}}
-async function refreshSelection(){if(!selected)return;const id=selected;try{const result=await request('/jobs/'+id+'/analysis');if(id!==selected)return;$('state').textContent=result.status;$('results').replaceChildren();if(!result.results){$('summary').textContent=result.status==='failed'?result.error_message:'Waiting for background processing…';return}const data=result.results;$('summary').textContent=`${data.row_count} rows · ${data.column_count} columns · ${data.missing_values_total} missing values`;const wrapper=document.createElement('div');wrapper.className='scroll';const table=document.createElement('table');const head=document.createElement('tr');for(const label of ['Column','Missing','Min','Max','Mean'])cell(head,label,'th');table.append(head);for(const column of data.columns){const row=document.createElement('tr');for(const value of [column.name,column.missing_values,column.numeric?.minimum??'—',column.numeric?.maximum??'—',column.numeric?.mean??'—'])cell(row,String(value));table.append(row)}wrapper.append(table);$('results').append(wrapper)}catch(error){if(id===selected){$('state').textContent='Unavailable';$('summary').textContent=error.message;$('results').replaceChildren()}}}
-$('upload').onsubmit=async event=>{event.preventDefault();if($('file').files[0].size>10*1024*1024){$('notice').textContent='Choose a CSV no larger than 10 MiB.';return}$('submit').disabled=true;try{const form=new FormData($('upload'));if(!form.get('name'))form.delete('name');const job=await request('/jobs/csv',{method:'POST',body:form});selected=job.id;$('title').textContent=job.name;$('notice').textContent='Upload saved. Background processing queued.';await refresh()}catch(error){$('notice').textContent=error.message}finally{$('submit').disabled=false}};
-refresh();setInterval(()=>{if(!document.hidden)refresh()},2000);
-</script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fa">
+  <title>FlowForge — Analysis workspace</title>
+  <link rel="stylesheet" href="/assets/dashboard.css?v=2">
+  <script src="/assets/dashboard.js?v=2" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to workspace</a>
+  <aside class="sidebar">
+    <a class="brand" href="/dashboard"><span class="brand-mark" aria-hidden="true">F</span>FlowForge<span class="brand-dot">.</span></a>
+    <div class="workspace-label">WORKSPACE</div>
+    <nav aria-label="Workspace">
+      <a class="nav-item active" href="/dashboard" aria-current="page"><span aria-hidden="true">▦</span> Overview</a>
+      <a class="nav-item" href="/docs"><span aria-hidden="true">⌘</span> API explorer <span class="external">↗</span></a>
+      <a class="nav-item" href="https://github.com/IdoCohen14/FlowForge" target="_blank" rel="noopener"><span aria-hidden="true">⌥</span> Source code <span class="external">↗</span></a>
+    </nav>
+    <div class="sidebar-note"><span class="small-icon" aria-hidden="true">◇</span><strong>Built for the work behind the work.</strong><p>Upload once. Follow every job. Understand your data.</p></div>
+    <div class="local-label"><span class="connection-dot"></span> Local workspace <span class="version">v1.1</span></div>
+  </aside>
+
+  <main id="main">
+    <header class="topbar"><div><span class="breadcrumb">Workspace</span><span class="slash">/</span><strong>Overview</strong></div><div class="connection" id="connection" role="status"><span class="connection-dot"></span><span id="connection-text">Connecting</span></div></header>
+    <div class="page-content">
+      <section class="page-heading"><div><div class="eyebrow">YOUR ANALYSIS WORKSPACE</div><h1>Good data. Clear decisions<span>.</span></h1><p>A little less spreadsheet detective work. A lot more clarity.</p></div><button class="button secondary" id="sample-button"><span aria-hidden="true">▷</span> Try sample data</button></section>
+
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <section class="metrics" aria-label="Job overview">
+        <article class="metric"><div class="metric-label">Total jobs <span class="metric-icon">▦</span></div><strong id="count-total">—</strong><small>Across this workspace</small></article>
+        <article class="metric"><div class="metric-label">In progress <span class="metric-icon blue">↻</span></div><strong id="count-active">—</strong><small>Queued or processing</small></article>
+        <article class="metric"><div class="metric-label">Completed <span class="metric-icon green">✓</span></div><strong id="count-completed">—</strong><small>Finished successfully</small></article>
+        <article class="metric"><div class="metric-label">Needs attention <span class="metric-icon orange">!</span></div><strong id="count-failed">—</strong><small>Jobs that failed</small></article>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="panel upload-panel" aria-labelledby="upload-title">
+          <div class="panel-heading"><div class="section-icon" aria-hidden="true">↥</div><div><h2 id="upload-title">Start with a CSV</h2><p>One file. A fresh perspective.</p></div></div>
+          <form id="upload-form">
+            <div class="dropzone" id="dropzone">
+              <div class="upload-symbol" aria-hidden="true">↥</div>
+              <strong id="file-title">Drop your CSV here</strong>
+              <span id="file-description">or choose a file from your computer</span>
+              <label class="button secondary file-label" for="file">Browse files</label>
+              <input id="file" class="visually-hidden" type="file" accept=".csv,text/csv" aria-describedby="file-description file-limits">
+              <small id="file-limits">CSV · UTF-8 · up to 10 MiB</small>
+            </div>
+            <label class="field-label" for="name">Analysis name <span>optional</span></label>
+            <input class="text-input" id="name" maxlength="200" placeholder="e.g. October sales report" autocomplete="off">
+            <button class="button primary full-width" id="upload-button" type="submit">Create analysis <span aria-hidden="true">↗</span></button>
+          </form>
+          <div class="upload-note"><span aria-hidden="true">◇</span><p>Your file is processed in the background.<br>You can keep working while we handle it.</p></div>
+        </section>
+
+        <section class="panel jobs-panel" aria-labelledby="jobs-title">
+          <div class="panel-heading jobs-heading"><div><h2 id="jobs-title">Your jobs</h2><p>A live view of what’s moving.</p></div><button class="icon-button" id="refresh-button" aria-label="Refresh jobs" title="Refresh jobs">↻</button></div>
+          <div class="job-controls"><div class="search-field"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search analyses…" aria-label="Search job names" maxlength="200"></div><select id="status-filter" aria-label="Filter by job status"><option value="">All statuses</option><option value="pending">Queued</option><option value="running">Processing</option><option value="completed">Completed</option><option value="failed">Failed</option></select></div>
+          <div class="table-scroll"><table class="jobs-table"><thead><tr><th scope="col">ANALYSIS</th><th scope="col">STATUS</th><th scope="col" class="submitted-column">SUBMITTED</th><th scope="col"><span class="visually-hidden">Open results</span></th></tr></thead><tbody id="jobs-body"></tbody></table></div>
+          <div class="empty-state" id="jobs-empty" hidden><span aria-hidden="true">▦</span><strong>No jobs here yet</strong><p>Upload a CSV or try the sample to get started.</p></div>
+          <div class="pagination"><span id="page-description" aria-live="polite">Loading jobs…</span><div><button class="icon-button" id="previous-page" aria-label="Previous page" disabled>←</button><button class="icon-button" id="next-page" aria-label="Next page" disabled>→</button></div></div>
+        </section>
+      </div>
+
+      <section class="panel results-panel" id="analysis-panel" aria-labelledby="analysis-title">
+        <div class="panel-heading results-heading"><div><div class="eyebrow">THE BIGGER PICTURE</div><h2 id="analysis-title">A closer look at your data</h2><p id="analysis-subtitle">Select a CSV job above to explore its results.</p></div><button class="button secondary" id="export-button" disabled>↓ Export JSON</button></div>
+        <div id="analysis-placeholder" class="analysis-placeholder"><div class="placeholder-art" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><strong>Clarity is one upload away.</strong><p>Row counts, data completeness, and column statistics.<br>All in one place, once your analysis is ready.</p></div>
+        <div id="analysis-content" hidden>
+          <div class="analysis-meta"><span id="analysis-status" class="badge"></span><span id="analysis-id"></span><span id="analysis-attempts"></span></div>
+          <div id="analysis-waiting" class="waiting-state" hidden><span class="waiting-icon" aria-hidden="true">↻</span><div><strong id="waiting-title"></strong><p id="waiting-description"></p></div></div>
+          <div id="analysis-completed" hidden>
+            <div class="result-metrics"><div><span>ROWS</span><strong id="result-rows"></strong></div><div><span>COLUMNS</span><strong id="result-columns"></strong></div><div><span>MISSING CELLS</span><strong id="result-missing"></strong></div><div><span>COMPLETENESS</span><strong id="result-completeness"></strong></div></div>
+            <div class="result-tabs" role="tablist" aria-label="Analysis views"><button id="tab-columns" role="tab" aria-selected="true" aria-controls="view-columns" data-view="columns">Column statistics</button><button id="tab-quality" role="tab" aria-selected="false" aria-controls="view-quality" data-view="quality" tabindex="-1">Data quality</button><button id="tab-json" role="tab" aria-selected="false" aria-controls="view-json" data-view="json" tabindex="-1">JSON</button></div>
+            <div id="view-columns" role="tabpanel" aria-labelledby="tab-columns"><div class="table-scroll"><table class="statistics-table"><thead><tr><th scope="col">COLUMN</th><th scope="col">TYPE</th><th scope="col">MISSING</th><th scope="col">MINIMUM</th><th scope="col">MAXIMUM</th><th scope="col">MEAN</th></tr></thead><tbody id="statistics-body"></tbody></table></div><p class="precision-note">Numeric values use decimal arithmetic. Means are rounded to 50 significant digits when needed.</p></div>
+            <div id="view-quality" role="tabpanel" aria-labelledby="tab-quality" hidden><p class="quality-note">Nonmissing cells per column. Empty and whitespace-only cells count as missing.</p><div id="quality-bars"></div></div>
+            <div id="view-json" role="tabpanel" aria-labelledby="tab-json" hidden><pre id="json-results" tabindex="0"></pre></div>
+          </div>
+        </div>
+      </section>
+      <footer><span><span class="footer-mark">F</span> A clearer flow, from file to insight.</span><span>Local portfolio deployment <span class="footer-divider">·</span> <a href="/docs">Explore the API ↗</a></span></footer>
+    </div>
+  </main>
+</body>
+</html>

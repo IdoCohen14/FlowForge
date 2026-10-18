@@ -64,7 +64,9 @@ Delivery is **at least once**, and computation can overlap after lease expiry. D
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/` | Original welcome JSON |
-| GET | `/dashboard` | Upload, monitor recent jobs, and inspect statistics |
+| GET | `/dashboard` | Workspace totals, drag-and-drop upload, sample data, job search, statistics, quality charts, and JSON export |
+| GET | `/dashboard/data` | Paginated dashboard jobs; optional name search, status filter, page and page size (up to 100); global status counts |
+| GET | `/samples/sales.csv` | Download the bundled CSV example |
 | GET | `/health/ready` | Database connectivity readiness; 503 when unavailable |
 | POST | `/jobs` | JSON `{ "name": "Demo" }`; creates a demonstration job and outbox event |
 | POST | `/jobs/csv` | Multipart `file`, optional `name`; stores a validated CSV job |
@@ -139,7 +141,7 @@ Generates a deterministic three-column CSV in temporary storage, verifies its ro
 
 ## Scope and remaining limitations
 
-This is a single-host portfolio deployment. Before exposing it publicly, add authentication/authorization, TLS, rate limits and quotas, request/concurrency limits, backup/restore procedures, monitoring, and upload retention. There is no tenant isolation; clients can list all jobs. The original unpaginated job list is retained for compatibility, and the dashboard displays its last twelve entries.
+This is a single-host portfolio deployment. Before exposing it publicly, add authentication/authorization, TLS, rate limits and quotas, request/concurrency limits, backup/restore procedures, monitoring, and upload retention. There is no tenant isolation; clients can list all jobs. The original unpaginated job list is retained for compatibility. The dashboard uses a separate paginated endpoint, ordered by the earliest outbox event timestamp (historical jobs without events appear last). Searches are case-insensitive literal substrings of job names, combined with the selected status filter. Status totals cover the full workspace, independent of filters. Responses are bounded; aggregate counts and submission-time sorting still scan database records and will need indexing or a dedicated job timestamp at larger scale.
 
 Worker leases are fixed, without heartbeat renewal or forced cancellation. An analysis that exceeds five minutes may be recomputed and eventually fail after three attempts. Scale or renew leases before supporting longer operations. Processing validation failures are terminal, while interrupted claims retry. Permanent broker publication failures stay in the outbox for manual remediation; pending jobs are not automatically failed. Redis loss after successful publication can strand a pending job, since the outbox's published marker is not automatically reconciled. A running dispatcher is required for recovery.
 

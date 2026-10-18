@@ -28,3 +28,5 @@ The isolated verifier confirmed duplicate delivery leaves results unchanged and 
 The dashboard route is covered by an HTTP test. Browser visual inspection was unavailable because access to the local page was denied; no visual verification is claimed.
 
 Final regression results: 152 tests passed on native Windows (19.32 seconds) and inside the Linux image (13.18 seconds), each with one existing Starlette TestClient deprecation warning. The real pipeline, duplicate delivery, and forced worker-crash recovery checks passed in both environments.
+
+Dashboard v1.1: 165 tests passed on Windows (21.41 seconds), including 13 new dashboard regressions for pagination, literal search, filtering, stable submission ordering, assets, and the sample workflow. Frontend JavaScript passed Node syntax checking. The live upgraded API served its HTML, CSS, JavaScript, and bundled sample with HTTP 200; a new sample analysis completed through the running worker. Browser visual inspection remains unverified.

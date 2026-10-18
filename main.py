@@ -1,9 +1,10 @@
 from typing import Literal
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi.staticfiles import StaticFiles
+from fastapi import Query, Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from uuid import UUID
 from sqlalchemy import func, select
@@ -15,7 +16,7 @@ from csv_analysis import CsvValidationError
 from file_storage import FileStorageError, UnsupportedFileType, UploadTooLarge, resolve_storage_path, store_csv
 from job_lifecycle import ALLOWED_TRANSITIONS
 
-app = FastAPI(title="FlowForge", version="1.0.0", description="Durable background CSV analysis with a transactional outbox and bounded worker recovery.")
+app = FastAPI(title="FlowForge", version="1.1.0", description="Durable background CSV analysis with a transactional outbox and bounded worker recovery.")
 
 
 class UploadBodyLimit:
@@ -47,11 +48,17 @@ class UploadBodyLimit:
 
 
 app.add_middleware(UploadBodyLimit)
+app.mount("/assets", StaticFiles(directory=Path(__file__).parent / "static"), name="assets")
 
 
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
     return FileResponse(Path(__file__).parent / "static" / "dashboard.html")
+
+
+@app.get("/samples/sales.csv", include_in_schema=False)
+def sales_sample() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "sample_data" / "sales.csv", media_type="text/csv", filename="sales.csv")
 
 
 @app.get("/health/ready")
@@ -232,3 +239,59 @@ def update_job_status(
         job.lease_expires_at = None
     session.commit()
     return job_response(job)
+
+
+class DashboardJob(BaseModel):
+    id: str
+    name: str
+    status: str
+    job_type: str
+    attempt_count: int
+    created_at: datetime | None
+
+
+class DashboardData(BaseModel):
+    items: list[DashboardJob]
+    total: int
+    page: int
+    page_size: int
+    counts: dict[str, int]
+
+
+@app.get("/dashboard/data", response_model=DashboardData)
+def dashboard_data(
+    session: Session = Depends(get_session),
+    q: str = Query(default="", max_length=200),
+    status: Literal["pending", "running", "completed", "failed"] | None = None,
+    page: int = Query(default=1, ge=1, le=1000000),
+    page_size: int = Query(default=10, ge=1, le=100),
+) -> DashboardData:
+    """Bounded dashboard queries, preserving the legacy /jobs array contract.
+
+    The earliest outbox event is the submission timestamp, including recovered
+    jobs with multiple events. Historical jobs without events have no timestamp.
+    """
+    counts = {name: 0 for name in ("pending", "running", "completed", "failed")}
+    counts.update(dict(session.execute(select(Job.status, func.count()).group_by(Job.status)).all()))
+    filters = []
+    if q.strip():
+        filters.append(Job.name.icontains(q.strip(), autoescape=True))
+    if status is not None:
+        filters.append(Job.status == status)
+    total = session.scalar(select(func.count()).select_from(Job).where(*filters))
+    submissions = select(
+        OutboxEvent.job_id, func.min(OutboxEvent.created_at).label("submitted_at")
+    ).group_by(OutboxEvent.job_id).subquery()
+    records = session.execute(
+        select(Job, submissions.c.submitted_at)
+        .outerjoin(submissions, submissions.c.job_id == Job.id)
+        .where(*filters)
+        .order_by(submissions.c.submitted_at.desc().nullslast(), Job.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return DashboardData(
+        items=[DashboardJob(id=str(job.id), name=job.name, status=job.status,
+            job_type=job.job_type, attempt_count=job.attempt_count, created_at=submitted)
+            for job, submitted in records],
+        total=total, page=page, page_size=page_size, counts=counts,
+    )
