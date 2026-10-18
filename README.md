@@ -4,6 +4,23 @@
 
 **A durable background job platform with a complete CSV analysis workflow.** Upload a dataset, follow its job in the dashboard, and retrieve statistics through a documented API. PostgreSQL owns job state; Redis and Celery deliver and execute work. This is a production-style engineering portfolio project for local deployment, with explicit failure semantics and limitations.
 
+## See it in action
+
+![FlowForge dataset dashboard in dark mode](docs/media/dashboard-dark.png)
+
+[Watch the short demo](docs/media/flowforge-demo.webm) · [Resume bullets and interview guide](docs/portfolio.md)
+
+The silent walkthrough shows the real CSV preview, background analysis, column controls, quality view, export, and theme switch. Captures use the bundled sample in an isolated workspace; no job history or results are mocked.
+
+<details>
+<summary>Light theme and mobile layout</summary>
+
+![FlowForge dataset dashboard in light mode](docs/media/dashboard-light.png)
+
+<img src="docs/media/dashboard-mobile.png" alt="FlowForge mobile dataset dashboard" width="340">
+
+</details>
+
 ## What it demonstrates
 
 - **Transactional outbox:** creating a job and scheduling its publication commit together. The API never needs to coordinate a PostgreSQL commit with a Redis publish.
@@ -183,3 +200,14 @@ The readiness check verifies PostgreSQL connectivity, not schema version, broker
 ## Repository map
 
 `main.py` API · `models.py` persistence · `tasks.py` claims and execution · `dispatcher.py` publication/retries · `recovery.py` expired claims · `file_storage.py` secure storage · `csv_analysis.py` streaming statistics · `migrations/` schema · `static/` dashboard · `tests/` regression coverage · `scripts/` demo and verification · `.github/workflows/ci.yml` automation
+
+
+## Recreate portfolio assets
+
+With the browser-test prerequisites installed and PostgreSQL/Redis running:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_browser_tests.py --portfolio
+```
+
+This uses a fresh generated database, upload directory and broker namespace. It records actual sample analysis through the worker, then writes desktop dark/light screenshots, a mobile screenshot, and a silent WebM walkthrough to `docs/media/`. It does not reuse the live application or change its records. Pauses are for demonstration pacing. The capture mode is separate from CI's browser-test mode.

@@ -4,6 +4,7 @@ Uses a generated PostgreSQL database, upload directory, Redis prefix/queue, and
 ephemeral loopback port. Does not read or mutate the live application's jobs.
 """
 import os
+import argparse
 from pathlib import Path
 import shutil
 import socket
@@ -24,6 +25,9 @@ from models import Job, CsvAnalysis, OutboxEvent
 from verify_pipeline import stop_process
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--portfolio", action="store_true", help="Capture a clean, real demo and screenshots instead of the test suite")
+    args = parser.parse_args()
     node = shutil.which("node")
     cli = ROOT/"node_modules/@playwright/test/cli.js"
     if node is None or not cli.is_file():
@@ -57,7 +61,7 @@ def main() -> None:
                 # Only fixture creation uses direct DB access. Recovery itself is
                 # exercised through real browser clicks, dispatcher, and worker.
                 with Session(isolated) as session, session.begin():
-                    for device in ("desktop","mobile"):
+                    for device in (() if args.portfolio else ("desktop","mobile")):
                         for stage in ("processing","delivery"):
                             filename = uuid4().hex+".csv"
                             (uploads/filename).write_bytes((ROOT/"sample_data/sales.csv").read_bytes())
@@ -93,12 +97,13 @@ def main() -> None:
                         if time.monotonic()>=deadline:
                             raise TimeoutError("Browser-test app did not start")
                         time.sleep(.2)
-                runner=subprocess.Popen([node,str(cli),"test"],cwd=ROOT,env=environment)
+                command = [node, str(ROOT/"scripts/capture_portfolio.cjs")] if args.portfolio else [node,str(cli),"test"]
+                runner=subprocess.Popen(command,cwd=ROOT,env=environment)
                 processes.append(runner)
                 code=runner.wait(timeout=240)
                 if code:
-                    raise subprocess.CalledProcessError(code,["playwright","test"])
-                print("PASS: browser workflows completed against isolated resources")
+                    raise subprocess.CalledProcessError(code,command)
+                print("PASS: portfolio capture completed against isolated resources" if args.portfolio else "PASS: browser workflows completed against isolated resources")
             except Exception:
                 for index,log in enumerate(logs):
                     log.flush();log.seek(0)
