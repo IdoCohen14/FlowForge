@@ -1,0 +1,98 @@
+/* Shared dark palette; layout and data behavior remain in dashboard.css/js. */
+:root {
+  color-scheme: dark;
+  color: #edf1f7;
+  background: #10141c;
+  --page: #10141c;
+  --surface: #171d27;
+  --raised: #202938;
+  --text: #edf1f7;
+  --muted: #a4afc1;
+  --subtle: #8996ab;
+  --line: #2b3545;
+  --accent: #f39a78;
+  --success-bg: #1b322c;
+  --success-text: #93d6b3;
+  --warning-bg: #362a24;
+  --warning-text: #f2be93;
+}
+body, main, .topbar { background: var(--page); color: var(--text); }
+.sidebar, .panel, .metrics, .metric, .skip-link { background: var(--surface); color: var(--text); }
+.panel, .metrics { box-shadow: 0 8px 28px #00000016; }
+.sidebar, .metric, .timing-strip, .result-tabs, .preview-panel, .local-label { border-color: var(--line); }
+.brand, h1, h2, .metric > strong, .dropzone > strong, .field-label, .preview-heading strong, .analysis-placeholder strong, .waiting-state strong { color: var(--text); }
+.brand-mark { background: var(--accent); color: #171b22; }
+.brand-dot, h1 > span { color: var(--accent); }
+.nav-item, .breadcrumb, .connection, .page-heading p, .panel-heading p,
+.metric-label, .metric small, .dropzone > span, .dropzone small, .field-label span,
+.upload-note, .upload-note > span, .upload-note p, .job-type, .pagination,
+.analysis-meta, .analysis-placeholder p, .waiting-state p, .precision-note,
+.quality-note, .preview-heading span, .preview-panel > p, .preview-panel > small,
+footer, .footer-divider, .external, .slash { color: var(--muted); }
+.nav-item.active { color: var(--accent); background: #302823; }
+.nav-item:hover { background: var(--raised); }
+.nav-item.active:hover { background: #3b2e27; }
+.sidebar-note { background: var(--raised); border-color: var(--line); }
+.sidebar-note p, .workspace-label, .local-label, .version, .eyebrow { color: var(--subtle); }
+.button.secondary, .icon-button, .text-input, .search-field, .job-controls select {
+  background: var(--surface); color: var(--text); border-color: #3b485d; box-shadow: none;
+}
+.button.secondary:hover:not(:disabled), .icon-button:hover:not(:disabled) { background: var(--raised); border-color: #65748b; }
+.button.primary { background: var(--accent); color: #171b22; border-color: var(--accent); }
+.button.primary:hover:not(:disabled) { background: #ffb292; border-color: #ffb292; }
+.text-input, .search-field { background: #121923; }
+.search-field input { color: var(--text); }
+.search-field > span, input::placeholder { color: var(--subtle); opacity: 1; }
+input[type="file"] { color: var(--muted); }
+.dropzone { background: #131a24; border-color: #46536a; }
+.dropzone.dragging, .dropzone:focus-within { background: #2a2422; border-color: var(--accent); }
+.section-icon { background: #302823; border-color: #4a3830; color: var(--accent); }
+.upload-symbol { color: var(--muted); }
+th { background: #131a24; color: var(--muted); border-color: var(--line); }
+td { color: #c1cbda; border-color: var(--line); }
+.job-name, .statistics-table td:first-child { color: var(--text); }
+.job-name:hover { color: var(--accent); }
+.jobs-table tr.selected td { background: #28231f; }
+.jobs-table tr.selected td:first-child { box-shadow: inset 2px 0 var(--accent); }
+.row-arrow { color: var(--muted); }
+.row-arrow:hover { color: var(--accent); }
+.badge { background: #283142; color: #c1cbda; }
+.badge.completed { background: var(--success-bg); color: var(--success-text); }
+.badge.running { background: #1b2a45; color: #a8c5ff; }
+.badge.failed { background: #3b2828; color: #ffb2a2; }
+.result-metrics { background: #131a24; border-color: var(--line); }
+.result-metrics > div, .result-metrics > div:nth-child(-n+2) { border-color: var(--line); }
+.result-metrics span, .timing-strip span { color: var(--muted); }
+.result-metrics strong, .timing-strip strong { color: var(--text); }
+.result-tabs button { color: var(--muted); }
+.result-tabs button:hover { color: var(--text); }
+.result-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.type-label { background: #263143; color: #c3cfe2; }
+.findings-panel, .notice { background: #182a25; border-color: #304d40; }
+.findings-panel h3 { color: #b3e1c7; }
+.findings-panel ul, .notice { color: #b3d0c0; }
+.quality-label { color: var(--text); }
+.quality-label > span { color: #a5cdb7; }
+.quality-track { background: #3d2d2a; }
+.quality-fill { background: #82bc9e; }
+#json-results { background: #111721; color: #c3d1e6; }
+.recovery-panel { background: var(--warning-bg); border-color: #604737; }
+.recovery-panel strong { color: #f5c9a7; }
+.recovery-panel p { color: #e2bea1; }
+.preview-panel.invalid #preview-message { color: #ffb2a2; }
+.notice.error { background: #3b2828; border-color: #67413c; color: #ffb2a2; }
+.preview-table { border-color: var(--line); }
+.empty-state { color: var(--muted); }
+.empty-state strong { color: var(--text); }
+.connection-dot { background: #82bc9e; }
+.connection.offline .connection-dot { background: #f2be93; }
+.waiting-icon { color: #a8c5ff; }
+.footer-mark { color: var(--accent); }
+footer a:hover { color: var(--text); }
+.placeholder-art i { background: #35455d; }
+.placeholder-art i:nth-child(2) { background: #405775; }
+.placeholder-art i:nth-child(3) { background: #815b48; }
+.placeholder-art i:nth-child(4) { background: #c28b6c; }
+.placeholder-art i:nth-child(5) { background: #537966; }
+:focus-visible { outline-color: #a8c5ff; }
+::selection { background: #664c40; color: #fff6f0; }
